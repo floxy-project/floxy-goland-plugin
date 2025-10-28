@@ -5,4 +5,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "floxy-idea-plugin"
+rootProject.name = "floxy-goland-plugin"
