@@ -43,9 +43,11 @@ class ExportToImageAction : AnAction() {
                 val puml = renderer.render(model)
                 val bytes = renderToBytes(puml, format)
                 val name = "${model.name}_v${model.version}.${format.ext}"
-                ApplicationManager.getApplication().runWriteAction {
-                    val child = dir.findChild(name) ?: dir.createChildData(this, name)
-                    child.setBinaryContent(bytes)
+                ApplicationManager.getApplication().invokeAndWait {
+                    ApplicationManager.getApplication().runWriteAction {
+                        val child = dir.findChild(name) ?: dir.createChildData(this, name)
+                        child.setBinaryContent(bytes)
+                    }
                 }
                 saved++
             }
