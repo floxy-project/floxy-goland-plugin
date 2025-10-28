@@ -18,17 +18,25 @@
       <add-to-group group-id="EditorPopupMenu" anchor="last"/>
     </group>
 
-    <action id="com.floxy.viewer.ShowFlowDiagramAction" class="com.floxy.viewer.actions.ShowFlowDiagramAction" text="Show Floxy Flow Diagram" description="Parse and show Floxy flow diagram">
+    <action id="com.floxy.viewer.ShowFlowDiagramAction" class="com.floxy.viewer.actions.ShowFlowDiagramAction" text="Show PlantUML Diagram" description="Parse and show Floxy flow diagram">
       <add-to-group group-id="com.floxy.viewer.Group" anchor="first"/>
       <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift F"/>
     </action>
 
-    <action id="com.floxy.viewer.ExportToPlantUMLAction" class="com.floxy.viewer.actions.ExportToPlantUMLAction" text="Export Floxy Flow to PlantUML" description="Export Floxy flow to .puml">
+    <action id="com.floxy.viewer.ShowMermaidDiagramAction" class="com.floxy.viewer.actions.ShowMermaidDiagramAction" text="Show Mermaid Diagram" description="Parse and show Floxy flow in Mermaid format">
       <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ShowFlowDiagramAction"/>
     </action>
 
-    <action id="com.floxy.viewer.ExportToImageAction" class="com.floxy.viewer.actions.ExportToImageAction" text="Export Floxy Diagram as Image" description="Export PlantUML-rendered diagram as PNG/SVG">
+    <action id="com.floxy.viewer.ExportToPlantUMLAction" class="com.floxy.viewer.actions.ExportToPlantUMLAction" text="Export Floxy Flow to PlantUML" description="Export Floxy flow to .puml">
+      <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ShowMermaidDiagramAction"/>
+    </action>
+
+    <action id="com.floxy.viewer.ExportToMermaidAction" class="com.floxy.viewer.actions.ExportToMermaidAction" text="Export Floxy Flow to Mermaid" description="Export Floxy flow to .mmd">
       <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ExportToPlantUMLAction"/>
+    </action>
+
+    <action id="com.floxy.viewer.ExportToImageAction" class="com.floxy.viewer.actions.ExportToImageAction" text="Export Floxy Diagram as Image" description="Export PlantUML-rendered diagram as PNG/SVG">
+      <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ExportToMermaidAction"/>
     </action>
 
 <!--    <action id="com.floxy.viewer.ValidateFlowAction" class="com.floxy.viewer.actions.ValidateFlowAction" text="Validate Floxy Flow" description="Validate flow graph">-->

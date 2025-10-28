@@ -48,7 +48,7 @@ class ValidationPanel(private val project: Project) : JPanel(BorderLayout()) {
         val analyzer = VisitorBasedFlowAnalyzer()
         val results = analyzer.analyzeFlowsDetailed(psiFile.text)
         if (results.isEmpty()) {
-            listModel.addElement("No floxy.Builder flows found in file")
+            listModel.addElement("No floxy.NewBuilder flows found in file")
             return
         }
         results.forEach { r ->

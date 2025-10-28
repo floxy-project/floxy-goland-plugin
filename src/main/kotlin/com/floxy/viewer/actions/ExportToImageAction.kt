@@ -29,7 +29,7 @@ class ExportToImageAction : AnAction() {
         }
         val models = project.getService(FlowModelService::class.java).collectFromFile(vFile)
         if (models.isEmpty()) {
-            Messages.showInfoMessage(project, "No floxy.Builder flows found in file", "Floxy Viewer")
+            Messages.showInfoMessage(project, "No floxy.NewBuilder flows found in file", "Floxy Viewer")
             return
         }
         val format = chooseFormat(project) ?: return

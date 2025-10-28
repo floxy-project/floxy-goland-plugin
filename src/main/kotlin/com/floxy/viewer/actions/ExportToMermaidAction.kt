@@ -1,6 +1,6 @@
 package com.floxy.viewer.actions
 
-import com.floxy.viewer.render.PlantUmlRenderer
+import com.floxy.viewer.render.MermaidRenderer
 import com.floxy.viewer.services.FlowModelService
 import com.goide.psi.GoFile
 import com.intellij.openapi.actionSystem.AnAction
@@ -13,7 +13,7 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.application.ApplicationManager
 
-class ExportToPlantUMLAction : AnAction() {
+class ExportToMermaidAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val vFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
@@ -28,12 +28,12 @@ class ExportToPlantUMLAction : AnAction() {
             return
         }
         val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
-        descriptor.title = "Choose directory to save .puml files"
+        descriptor.title = "Choose directory to save .mmd files"
         val dir: VirtualFile = FileChooser.chooseFile(descriptor, project, null) ?: return
-        val renderer = PlantUmlRenderer()
+        val renderer = MermaidRenderer()
         models.forEach { model ->
             val text = renderer.render(model)
-            val name = "${model.name}_v${model.version}.puml"
+            val name = "${model.name}_v${model.version}.mmd"
             ApplicationManager.getApplication().runWriteAction {
                 val child = dir.findChild(name) ?: dir.createChildData(this, name)
                 VfsUtil.saveText(child, text)
