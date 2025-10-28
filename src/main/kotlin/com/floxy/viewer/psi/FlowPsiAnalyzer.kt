@@ -1,143 +1,243 @@
 package com.floxy.viewer.psi
 
 import com.floxy.viewer.model.*
-import com.goide.psi.*
+import com.goide.psi.GoFile
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiElement
-import com.intellij.psi.util.PsiTreeUtil
 
 /**
- * Parses floxy.Builder chains from Go PSI and produces FlowModel(s).
- * Uses text-based parsing for GoLand 2025.2 compatibility
+ * Parses floxy.Builder chains from Go files using robust text parsing.
+ * This avoids depending on Go PSI internals that may differ across SDK versions.
  */
-class FlowPsiAnalyzer(private val project: Project) {
+class FlowPsiAnalyzer(private val project: Project? = null) {
 
     fun collectFlows(file: GoFile): List<FlowModel> {
+        val fileText = file.text ?: return emptyList()
+        return parseText(fileText)
+    }
+
+    fun collectFlowsFromText(fileText: String): List<FlowModel> = parseText(fileText)
+
+    private fun parseText(fileText: String): List<FlowModel> {
         val flows = mutableListOf<FlowModel>()
-        
-        // Get file text and parse it
-        val fileText = file.text
-        
-        // Find all floxy.NewBuilder patterns (support common typo NewBuidler and package aliases)
-        val newBuilderPattern = Regex("""\b(?:[A-Za-z_]\w*)\.(?:NewBuilder|NewBuidler)\("([^"]+)",\s*(\d+)\)""")
-        val matches = newBuilderPattern.findAll(fileText)
-        
-        for (match in matches) {
-            val name = match.groupValues[1]
-            val version = match.groupValues[2].toIntOrNull() ?: 1
-            
-            // Find the corresponding .Build() call
-            val buildPattern = Regex("""\.Build\(\)""")
-            val buildMatches = buildPattern.findAll(fileText, match.range.last)
-            
-            for (buildMatch in buildMatches) {
-                val model = parseBuilderChainFromText(fileText, match.range, buildMatch.range, name, version)
-                if (model != null) {
-                    flows.add(model)
-                    break // Only take the first Build() after this NewBuilder
-                }
+
+        val buildPattern = Regex("""\.\s*Build\(\)""", setOf(RegexOption.DOT_MATCHES_ALL))
+
+        var startIndex = 0
+        while (true) {
+            val nb = fileText.indexOf("NewBuilder(", startIndex)
+            val nbt = fileText.indexOf("NewBuidler(", startIndex)
+            val openIdx = when {
+                nb == -1 && nbt == -1 -> break
+                nb == -1 -> nbt
+                nbt == -1 -> nb
+                else -> minOf(nb, nbt)
+            }
+            val isTypo = fileText.startsWith("NewBuidler(", openIdx)
+            val nameToken = if (isTypo) "NewBuidler" else "NewBuilder"
+            val openParenIdx = openIdx + nameToken.length
+            val closeIdx = findMatchingParen(fileText, openParenIdx)
+            if (closeIdx == -1) break
+            val args = fileText.substring(openParenIdx + 1, closeIdx)
+
+            // Extract the first string literal as name (supports "..." or `...`)
+            val nameMatch = Regex("([\"`])(.+?)\\1", setOf(RegexOption.DOT_MATCHES_ALL)).find(args)
+            val name = nameMatch?.groupValues?.getOrNull(2) ?: run { startIndex = closeIdx + 1; continue }
+
+            // Extract the first integer literal after the name as version
+            val afterNameIndex = nameMatch.range.last + 1
+            val versionMatch = Regex("\\b(\\d+)\\b").find(args, afterNameIndex)
+            val version = versionMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+
+            // Locate the first .Build() after this constructor call
+            val build = buildPattern.find(fileText, closeIdx)
+            if (build != null) {
+                val chainText = fileText.substring(closeIdx + 1, build.range.first)
+                val model = parseChain(chainText, name, version)
+                if (model != null) flows.add(model)
+                startIndex = build.range.last + 1
+            } else {
+                startIndex = closeIdx + 1
             }
         }
-        
         return flows
     }
 
-    private fun parseBuilderChainFromText(
-        fileText: String, 
-        newBuilderRange: IntRange, 
-        buildRange: IntRange, 
-        name: String, 
-        version: Int
-    ): FlowModel? {
+    private fun findMatchingParen(text: String, openIdx: Int): Int {
+        var i = openIdx
+        var depth = 0
+        var inString: Char? = null
+        while (i < text.length) {
+            val c = text[i]
+            if (inString != null) {
+                if (c == inString) {
+                    inString = null
+                } else if (c == '\\' && inString == '"' && i + 1 < text.length) {
+                    i++ // skip escaped character
+                }
+            } else {
+                if (c == '"' || c == '`') {
+                    inString = c
+                } else if (c == '(') {
+                    depth++
+                } else if (c == ')') {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return -1
+    }
+
+    private fun parseChain(chainText: String, name: String, version: Int): FlowModel? {
         val model = FlowModel(name = name, version = version)
-        
-        // Extract the text between NewBuilder and Build
-        val chainText = fileText.substring(newBuilderRange.last + 1, buildRange.first)
-        
-        // Parse method calls
-        // Allow optional extra arguments after required strings to match opts/... and complex signatures
-        val stepPattern = Regex("""\.(Step|Then)\(\s*"([^"]+)"\s*,\s*"([^"]+)"(?:[^)]*)\)""")
-        val onFailurePattern = Regex("""\.OnFailure\(\s*"([^"]+)"\s*,\s*"([^"]+)"(?:[^)]*)\)""")
-        val savePointPattern = Regex("""\.SavePoint\(\s*"([^"]+)"\s*\)""")
-        val waitHumanPattern = Regex("""\.WaitHumanConfirm\(\s*"([^"]+)"(?:[^)]*)\)""")
-        val joinStepPattern = Regex("""\.JoinStep\(\s*"([^"]+)"[^)]*\)""")
-        val forkPattern = Regex("""\.Fork\(\s*"([^"]+)"[^)]*\)""")
-        
         var lastStep: String? = null
-        
-        // Process Step/Then calls
-        stepPattern.findAll(chainText).forEach { match ->
-            val stepName = match.groupValues[2]
-            val handler = match.groupValues[3]
-            
-            model.steps[stepName] = FlowStep(stepName, handler, FlowStepType.Task)
-            
-            if (lastStep != null && lastStep != stepName) {
-                model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
-            }
-            lastStep = stepName
+
+        // Allow optional extra args after required strings (opts, strategies, etc.)
+        val ws = "\\s*"
+        // Lightweight patterns just to detect method names; actual arg extraction is done programmatically
+        val methodNamePattern = Regex("""\A\.${ws}(Step|Then|OnFailure|SavePoint|WaitHumanConfirm|JoinStep|Fork)${ws}\(""")
+
+        fun extractArgs(call: String): String {
+            val paren = call.indexOf('(')
+            val close = findMatchingParen(call, paren)
+            return if (paren != -1 && close != -1) call.substring(paren + 1, close) else ""
         }
-        
-        // Process OnFailure calls
-        onFailurePattern.findAll(chainText).forEach { match ->
-            val stepName = match.groupValues[1]
-            val handler = match.groupValues[2]
-            
-            model.steps[stepName] = FlowStep(stepName, handler, FlowStepType.Task)
-            
-            if (lastStep != null) {
-                model.edges.add(FlowEdge(lastStep!!, stepName, "onFailure"))
+        fun extractStrings(args: String, max: Int): List<String> {
+            val res = mutableListOf<String>()
+            var k = 0
+            while (k < args.length && res.size < max) {
+                while (k < args.length && args[k].isWhitespace()) k++
+                if (k >= args.length) break
+                val c = args[k]
+                if (c == '"' || c == '`') {
+                    val quote = c
+                    k++
+                    val sb = StringBuilder()
+                    while (k < args.length) {
+                        val ch = args[k]
+                        if (ch == quote) { k++; break }
+                        if (quote == '"' && ch == '\\' && k + 1 < args.length) { // handle escapes in "..."
+                            k++
+                            sb.append(args[k])
+                            k++
+                            continue
+                        }
+                        sb.append(ch)
+                        k++
+                    }
+                    res.add(sb.toString())
+                    // skip until next comma to simplify
+                    while (k < args.length && args[k] != ',') k++
+                    if (k < args.length && args[k] == ',') k++
+                } else {
+                    // skip token (identifier/nested call/array), roughly
+                    var depth = 0
+                    while (k < args.length) {
+                        val ch = args[k]
+                        if (ch == '(' || ch == '[' || ch == '{') depth++
+                        else if (ch == ')' || ch == ']' || ch == '}') { if (depth == 0) break; depth-- }
+                        else if (depth == 0 && ch == ',') { k++; break }
+                        k++
+                    }
+                }
             }
+            return res
         }
-        
-        // Process SavePoint calls
-        savePointPattern.findAll(chainText).forEach { match ->
-            val stepName = match.groupValues[1]
-            
-            model.steps[stepName] = FlowStep(stepName, null, FlowStepType.SavePoint)
-            
-            if (lastStep != null && lastStep != stepName) {
-                model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+
+        // Scan chainText left-to-right and extract .MethodName(<balanced parentheses>) calls
+        var i = 0
+        while (i < chainText.length) {
+            val dot = chainText.indexOf('.', i)
+            if (dot == -1) break
+            val nextOpen = chainText.indexOf('(', dot)
+            if (nextOpen == -1) break
+            val close = findMatchingParen(chainText, nextOpen)
+            if (close == -1) break
+            val callText = chainText.substring(dot, close + 1)
+
+            val methodMatcher = methodNamePattern.find(callText)
+            val method = methodMatcher?.groupValues?.getOrNull(1)
+
+            when (method) {
+                "Step", "Then" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 2)
+                    if (strs.size >= 2) {
+                        val stepName = strs[0]
+                        val handler = strs[1]
+                        model.steps[stepName] = FlowStep(stepName, handler, FlowStepType.Task)
+                        if (lastStep != null && lastStep != stepName) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+                        }
+                        lastStep = stepName
+                    }
+                }
+                "OnFailure" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 2)
+                    if (strs.size >= 2) {
+                        val stepName = strs[0]
+                        val handler = strs[1]
+                        model.steps[stepName] = FlowStep(stepName, handler, FlowStepType.Task)
+                        if (lastStep != null) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "onFailure"))
+                        }
+                    }
+                }
+                "SavePoint" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 1)
+                    if (strs.isNotEmpty()) {
+                        val stepName = strs[0]
+                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.SavePoint)
+                        if (lastStep != null && lastStep != stepName) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+                        }
+                        lastStep = stepName
+                    }
+                }
+                "WaitHumanConfirm" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 1)
+                    if (strs.isNotEmpty()) {
+                        val stepName = strs[0]
+                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Human)
+                        if (lastStep != null && lastStep != stepName) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+                        }
+                        lastStep = stepName
+                    }
+                }
+                "JoinStep" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 1)
+                    if (strs.isNotEmpty()) {
+                        val stepName = strs[0]
+                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Join)
+                        if (lastStep != null) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+                        }
+                        lastStep = stepName
+                    }
+                }
+                "Fork" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 1)
+                    if (strs.isNotEmpty()) {
+                        val stepName = strs[0]
+                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Fork)
+                        if (lastStep != null && lastStep != stepName) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+                        }
+                        lastStep = stepName
+                    }
+                }
             }
-            lastStep = stepName
+
+            i = close + 1
         }
-        
-        // Process WaitHumanConfirm calls
-        waitHumanPattern.findAll(chainText).forEach { match ->
-            val stepName = match.groupValues[1]
-            
-            model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Human)
-            
-            if (lastStep != null && lastStep != stepName) {
-                model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
-            }
-            lastStep = stepName
-        }
-        
-        // Process JoinStep calls
-        joinStepPattern.findAll(chainText).forEach { match ->
-            val stepName = match.groupValues[1]
-            
-            model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Join)
-            
-            if (lastStep != null) {
-                model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
-            }
-            lastStep = stepName
-        }
-        
-        // Process Fork calls
-        forkPattern.findAll(chainText).forEach { match ->
-            val stepName = match.groupValues[1]
-            
-            model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Fork)
-            
-            if (lastStep != null && lastStep != stepName) {
-                model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
-            }
-            lastStep = stepName
-        }
-        
+
         return if (model.steps.isNotEmpty()) model else null
     }
 }

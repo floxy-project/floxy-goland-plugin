@@ -3,6 +3,12 @@ plugins {
     kotlin("jvm") version "2.2.0"
 }
 
+// Prevent IntelliJ Gradle plugin from trying to resolve a real IDE during unit tests
+val isTestTask = gradle.startParameter.taskNames.any { it.contains("test", ignoreCase = true) }
+if (isTestTask) {
+    System.setProperty("idea.home.path", project.layout.projectDirectory.dir(".fake-ide").asFile.absolutePath)
+}
+
 group = "com.floxy"
 version = "0.1.0"
 
@@ -29,14 +35,33 @@ tasks {
     }
 
     runIde {
-        ideDir.set(file("/Users/roman/Applications/GoLand.app"))
+        // On macOS, the actual IDE home is under .app/Contents
+        val macIdeContents = file("/Users/roman/Applications/GoLand.app/Contents")
+        if (macIdeContents.exists()) {
+            ideDir.set(macIdeContents)
+        }
     }
 
     buildSearchableOptions {
         enabled = false
     }
+
+    test {
+        useJUnitPlatform()
+    }
 }
 
 dependencies {
     implementation("net.sourceforge.plantuml:plantuml:1.2024.5")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-console:1.11.3")
+}
+
+// Custom unit test runner that bypasses IntelliJ Gradle plugin's Test task integrations
+tasks.register<JavaExec>("unitTest") {
+    group = "verification"
+    description = "Runs unit tests via JUnit ConsoleLauncher"
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("org.junit.platform.console.ConsoleLauncher")
+    args("--scan-classpath")
 }
