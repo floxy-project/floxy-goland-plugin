@@ -59,9 +59,10 @@ class MermaidRenderer {
             }
             val arrow = when (e.kind) {
                 "onFailure", "cond_false", "else" -> "-.->"
-                else -> "--->"
+                else -> "-->"
             }
-            sb.appendLine("${alias(e.from)} $arrow ${alias(e.to)} $label")
+            // Mermaid expects labels between the arrow and the target: A -->|label| B
+            sb.appendLine("${alias(e.from)} $arrow$label ${alias(e.to)}")
         }
 
         return sb.toString()
