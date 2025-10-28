@@ -254,7 +254,10 @@ class FlowModelBuilder : ChainVisitor {
 
         context.lastStep?.let { last ->
             if (last != fullName) {
-                context.model.edges.add(FlowEdge(last, fullName, "next"))
+                // Проверяем, является ли предыдущий шаг Condition
+                val prevStep = context.model.steps[last]
+                val edgeKind = if (prevStep?.type == FlowStepType.Condition) "then" else "next"
+                context.model.edges.add(FlowEdge(last, fullName, edgeKind))
             }
         }
 
@@ -384,40 +387,25 @@ class FlowModelBuilder : ChainVisitor {
             }
         }
 
-        // Обрабатываем then ветку
-        if (node.thenBranch.isNotEmpty()) {
-            val thenContext = VisitorContext(context.model, fullName, context.branchPrefix)
-            node.thenBranch.forEach { thenNode ->
-                val thenStepName = thenContext.getFullStepName(thenNode.stepName)
-
-                if (thenContext.lastStep == fullName) {
-                    // Первый шаг в then ветке
-                    context.model.steps[thenStepName] = FlowStep(thenStepName, null, FlowStepType.Task)
-                    context.model.edges.add(FlowEdge(fullName, thenStepName, "then"))
-                    thenContext.lastStep = thenStepName
-                } else {
-                    accept(thenNode, thenContext, this)
-                }
-            }
-        }
-
-        // Обрабатываем else ветку
+        // Обрабатываем else ветку (из func внутри Condition)
         if (node.elseBranch.isNotEmpty()) {
-            val elseContext = VisitorContext(context.model, fullName, context.branchPrefix)
-            node.elseBranch.forEach { elseNode ->
-                val elseStepName = elseContext.getFullStepName(elseNode.stepName)
-
-                if (elseContext.lastStep == fullName) {
-                    // Первый шаг в else ветке
-                    context.model.steps[elseStepName] = FlowStep(elseStepName, null, FlowStepType.Task)
+            val elseContext = VisitorContext(context.model, null, context.branchPrefix)
+            
+            node.elseBranch.forEachIndexed { index, elseNode ->
+                if (index == 0) {
+                    // Первый шаг в else ветке - соединяем с Condition
+                    val elseStepName = elseContext.getFullStepName(elseNode.stepName)
                     context.model.edges.add(FlowEdge(fullName, elseStepName, "else"))
-                    elseContext.lastStep = elseStepName
-                } else {
-                    accept(elseNode, elseContext, this)
                 }
+                    
+                accept(elseNode, elseContext, this)
             }
+                
+            // Запоминаем последний шаг else-ветки для возможного соединения
+            elseContext.lastStep?.let { context.addBranchLastNode(it) }
         }
 
+        // Устанавливаем специальный флаг, что следующий шаг должен быть соединён как "then"
         context.lastStep = fullName
         context.addBranchLastNode(fullName)
     }
@@ -551,10 +539,11 @@ class ChainParser {
                 }
                 "Condition" -> {
                     val args = extractArgs(callText)
-                    val strs = extractStrings(args, 1)
+                    val strs = extractStrings(args, 2)
                     if (strs.isNotEmpty()) {
-                        // TODO: извлечь then/else ветки
-                        nodes.add(ChainNode.ConditionNode(strs[0]))
+                        val conditionExpr = if (strs.size >= 2) strs[1] else null
+                        val elseBranch = extractElseBranch(callText)
+                        nodes.add(ChainNode.ConditionNode(strs[0], conditionExpr, emptyList(), elseBranch))
                     }
                 }
             }
@@ -563,6 +552,32 @@ class ChainParser {
         }
 
         return nodes
+    }
+
+    private fun extractElseBranch(conditionCallText: String): List<ChainNode> {
+        // Ищем func( внутри вызова Condition - это else-ветка
+        var i = 0
+        while (i < conditionCallText.length) {
+            val funcStart = conditionCallText.indexOf("func(", i)
+            if (funcStart == -1) break
+
+            val openBrace = conditionCallText.indexOf('{', funcStart)
+            if (openBrace == -1) break
+
+            val closeBrace = findMatchingBrace(conditionCallText, openBrace)
+            if (closeBrace == -1) break
+
+            val branchContent = conditionCallText.substring(openBrace + 1, closeBrace)
+            val branchNodes = parse(branchContent)
+
+            if (branchNodes.isNotEmpty()) {
+                return branchNodes
+            }
+
+            i = closeBrace + 1
+        }
+
+        return emptyList()
     }
 
     private fun extractBranches(forkCallText: String): List<List<ChainNode>> {
