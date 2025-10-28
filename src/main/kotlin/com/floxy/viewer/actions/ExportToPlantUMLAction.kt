@@ -11,6 +11,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.application.ApplicationManager
 
 class ExportToPlantUMLAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
@@ -33,8 +34,10 @@ class ExportToPlantUMLAction : AnAction() {
         models.forEach { model ->
             val text = renderer.render(model)
             val name = "${model.name}_v${model.version}.puml"
-            val child = dir.findChild(name) ?: dir.createChildData(this, name)
-            VfsUtil.saveText(child, text)
+            ApplicationManager.getApplication().runWriteAction {
+                val child = dir.findChild(name) ?: dir.createChildData(this, name)
+                VfsUtil.saveText(child, text)
+            }
         }
         Messages.showInfoMessage(project, "Exported ${models.size} diagram(s) to ${dir.path}", "Floxy Viewer")
     }

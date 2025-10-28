@@ -12,6 +12,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.application.ApplicationManager
 import net.sourceforge.plantuml.FileFormat
 import net.sourceforge.plantuml.FileFormatOption
 import net.sourceforge.plantuml.SourceStringReader
@@ -42,8 +43,10 @@ class ExportToImageAction : AnAction() {
                 val puml = renderer.render(model)
                 val bytes = renderToBytes(puml, format)
                 val name = "${model.name}_v${model.version}.${format.ext}"
-                val child = dir.findChild(name) ?: dir.createChildData(this, name)
-                child.setBinaryContent(bytes)
+                ApplicationManager.getApplication().runWriteAction {
+                    val child = dir.findChild(name) ?: dir.createChildData(this, name)
+                    child.setBinaryContent(bytes)
+                }
                 saved++
             }
         }, "Exporting Floxy diagrams", false, project)

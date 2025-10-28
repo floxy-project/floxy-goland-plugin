@@ -1,7 +1,7 @@
 package com.floxy.viewer.ui
 
+import com.floxy.viewer.psi.VisitorBasedFlowAnalyzer
 import com.floxy.viewer.services.FlowModelService
-import com.floxy.viewer.validate.Validator
 import com.goide.psi.GoFile
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -45,19 +45,18 @@ class ValidationPanel(private val project: Project) : JPanel(BorderLayout()) {
         val editor = FileEditorManager.getInstance(project).selectedEditor ?: return
         val file = editor.file ?: return
         val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return
-        val models = project.getService(FlowModelService::class.java).collectFromFile(file)
-        val validator = Validator()
-        if (models.isEmpty()) {
+        val analyzer = VisitorBasedFlowAnalyzer()
+        val results = analyzer.analyzeFlowsDetailed(psiFile.text)
+        if (results.isEmpty()) {
             listModel.addElement("No floxy.Builder flows found in file")
             return
         }
-        models.forEach { m ->
-            val issues = validator.validate(m)
-            listModel.addElement("Flow ${m.name} v${m.version}:")
-            if (issues.isEmpty()) {
+        results.forEach { r ->
+            listModel.addElement("Flow ${r.model.name} v${r.model.version}:")
+            if (r.errors.isEmpty()) {
                 listModel.addElement("  OK")
             } else {
-                issues.forEach { i -> listModel.addElement("  [${i.severity}] ${i.message}") }
+                r.errors.forEach { err -> listModel.addElement("  [ERROR] $err") }
             }
             listModel.addElement("")
         }
