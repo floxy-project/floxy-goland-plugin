@@ -62,33 +62,6 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
         return flows
     }
 
-    private fun findMatchingParen(text: String, openIdx: Int): Int {
-        var i = openIdx
-        var depth = 0
-        var inString: Char? = null
-        while (i < text.length) {
-            val c = text[i]
-            if (inString != null) {
-                if (c == inString) {
-                    inString = null
-                } else if (c == '\\' && inString == '"' && i + 1 < text.length) {
-                    i++ // skip escaped character
-                }
-            } else {
-                if (c == '"' || c == '`') {
-                    inString = c
-                } else if (c == '(') {
-                    depth++
-                } else if (c == ')') {
-                    depth--
-                    if (depth == 0) return i
-                }
-            }
-            i++
-        }
-        return -1
-    }
-
     private fun parseChain(chainText: String, name: String, version: Int): FlowModel? {
         val model = FlowModel(name = name, version = version)
         var lastStep: String? = null
@@ -96,7 +69,7 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
         // Allow optional extra args after required strings (opts, strategies, etc.)
         val ws = "\\s*"
         // Lightweight patterns just to detect method names; actual arg extraction is done programmatically
-        val methodNamePattern = Regex("""\A\.${ws}(Step|Then|OnFailure|SavePoint|WaitHumanConfirm|JoinStep|Fork)${ws}\(""")
+        val methodNamePattern = Regex("""\A\.${ws}(Step|Then|OnFailure|SavePoint|WaitHumanConfirm|JoinStep|Fork|Condition)${ws}\(""")
 
         fun extractArgs(call: String): String {
             val paren = call.indexOf('(')
@@ -240,6 +213,7 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
                     if (strs.isNotEmpty()) {
                         val stepName = strs[0]
                         val parallelBranches = extractParallelBranches(callText)
+                        val branchStructures = extractParallelBranchStructures(callText)
                         
                         // Create the fork step
                         model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Fork, parallelBranches = parallelBranches)
@@ -248,24 +222,22 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
                         }
                         
                         // Create steps for each parallel branch and add connections
-                        parallelBranches.forEachIndexed { branchIndex, branchSteps ->
-                            branchSteps.forEachIndexed { stepIndex, branchStepName ->
-                                val fullStepName = "${branchStepName}_branch_${branchIndex + 1}"
-                                model.steps[fullStepName] = FlowStep(fullStepName, null, FlowStepType.Task)
-                                
-                                // Connect fork to first step of each branch
-                                if (stepIndex == 0) {
-                                    model.edges.add(FlowEdge(stepName, fullStepName, "split"))
-                                }
-                                
-                                // Connect steps within the same branch
-                                if (stepIndex > 0) {
-                                    val prevStepName = "${branchSteps[stepIndex - 1]}_branch_${branchIndex + 1}"
-                                    model.edges.add(FlowEdge(prevStepName, fullStepName, "next"))
-                                }
-                            }
+                        branchStructures.forEachIndexed { branchIndex, branchSteps ->
+                            createStructuredBranchSteps(model, stepName, branchSteps, branchIndex + 1)
                         }
                         
+                        lastStep = stepName
+                    }
+                }
+                "Condition" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 1)
+                    if (strs.isNotEmpty()) {
+                        val stepName = strs[0]
+                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Condition)
+                        if (lastStep != null && lastStep != stepName) {
+                            model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
+                        }
                         lastStep = stepName
                     }
                 }
@@ -280,29 +252,188 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
     private fun extractParallelBranches(forkCallText: String): List<List<String>> {
         val branches = mutableListOf<List<String>>()
         
-        // Find all function calls within the Fork call
-        val funcPattern = Regex("""func\s*\(\s*\w*\s*\*\s*floxy\.Builder\s*\)\s*\{([^}]*)\}""", setOf(RegexOption.DOT_MATCHES_ALL))
-        val matches = funcPattern.findAll(forkCallText)
-        
-        for (match in matches) {
-            val branchContent = match.groupValues[1]
-            val branchSteps = mutableListOf<String>()
+        // Find all function calls within the Fork call using a more robust approach
+        var i = 0
+        while (i < forkCallText.length) {
+            val funcStart = forkCallText.indexOf("func(", i)
+            if (funcStart == -1) break
             
-            // Extract Step calls from this branch
-            val stepPattern = Regex("""\.\s*Step\s*\(\s*([\"`])([^\"`]+)\1""")
-            val stepMatches = stepPattern.findAll(branchContent)
+            val openBrace = forkCallText.indexOf('{', funcStart)
+            if (openBrace == -1) break
             
-            for (stepMatch in stepMatches) {
-                val stepName = stepMatch.groupValues[2]
-                branchSteps.add(stepName)
-            }
+            val closeBrace = findMatchingBrace(forkCallText, openBrace)
+            if (closeBrace == -1) break
+            
+            val branchContent = forkCallText.substring(openBrace + 1, closeBrace)
+            val branchSteps = extractStepsFromBranch(branchContent)
             
             if (branchSteps.isNotEmpty()) {
                 branches.add(branchSteps)
             }
+            
+            i = closeBrace + 1
         }
         
         return branches
+    }
+    
+    private fun extractParallelBranchStructures(forkCallText: String): List<List<BranchStep>> {
+        val branches = mutableListOf<List<BranchStep>>()
+        
+        // Find all function calls within the Fork call using a more robust approach
+        var i = 0
+        while (i < forkCallText.length) {
+            val funcStart = forkCallText.indexOf("func(", i)
+            if (funcStart == -1) break
+            
+            val openBrace = forkCallText.indexOf('{', funcStart)
+            if (openBrace == -1) break
+            
+            val closeBrace = findMatchingBrace(forkCallText, openBrace)
+            if (closeBrace == -1) break
+            
+            val branchContent = forkCallText.substring(openBrace + 1, closeBrace)
+            val branchSteps = extractBranchStructure(branchContent)
+            
+            if (branchSteps.isNotEmpty()) {
+                branches.add(branchSteps)
+            }
+            
+            i = closeBrace + 1
+        }
+        
+        return branches
+    }
+    
+    private fun extractStepsFromBranch(branchContent: String): List<String> {
+        val steps = mutableListOf<String>()
+        
+        // Extract all method calls from this branch (including nested Fork)
+        val methodPattern = Regex("""\.\s*(Step|Then|Condition|OnFailure|SavePoint|WaitHumanConfirm|Fork|JoinStep)\s*\(\s*([\"`])([^\"`]+)\2""")
+        val methodMatches = methodPattern.findAll(branchContent)
+        
+        for (methodMatch in methodMatches) {
+            val methodName = methodMatch.groupValues[1]
+            val stepName = methodMatch.groupValues[3]
+            
+            steps.add(stepName)
+            
+            // If this is a Fork, recursively extract steps from its branches
+            if (methodName == "Fork") {
+                val forkStart = methodMatch.range.first
+                val forkEnd = findMatchingParen(branchContent, forkStart + methodName.length)
+                if (forkEnd != -1) {
+                    val forkContent = branchContent.substring(forkStart, forkEnd + 1)
+                    val nestedBranches = extractParallelBranches(forkContent)
+                    // Add nested steps to the current branch
+                    nestedBranches.forEach { nestedSteps ->
+                        steps.addAll(nestedSteps)
+                    }
+                }
+            }
+        }
+        
+        return steps
+    }
+    
+    private fun extractBranchStructure(branchContent: String): List<BranchStep> {
+        val steps = mutableListOf<BranchStep>()
+        
+        // Extract all method calls from this branch
+        val methodPattern = Regex("""\.\s*(Step|Then|Condition|OnFailure|SavePoint|WaitHumanConfirm|Fork|JoinStep)\s*\(\s*([\"`])([^\"`]+)\2""")
+        val methodMatches = methodPattern.findAll(branchContent)
+        
+        for (methodMatch in methodMatches) {
+            val methodName = methodMatch.groupValues[1]
+            val stepName = methodMatch.groupValues[3]
+            
+            when (methodName) {
+                "Fork" -> {
+                    val forkStart = methodMatch.range.first
+                    val forkEnd = findMatchingParen(branchContent, forkStart + methodName.length)
+                    if (forkEnd != -1) {
+                        val forkContent = branchContent.substring(forkStart, forkEnd + 1)
+                        val nestedBranches = extractParallelBranches(forkContent)
+                        steps.add(BranchStep(stepName, BranchStepType.Fork, nestedBranches))
+                    }
+                }
+                "JoinStep" -> {
+                    steps.add(BranchStep(stepName, BranchStepType.Join))
+                }
+                "Condition" -> {
+                    steps.add(BranchStep(stepName, BranchStepType.Condition))
+                }
+                else -> {
+                    steps.add(BranchStep(stepName, BranchStepType.Task))
+                }
+            }
+        }
+        
+        return steps
+    }
+    
+    private data class BranchStep(
+        val name: String,
+        val type: BranchStepType,
+        val nestedBranches: List<List<String>> = emptyList()
+    )
+    
+    private enum class BranchStepType {
+        Task, Condition, Fork, Join
+    }
+    
+    private fun findMatchingBrace(text: String, openIdx: Int): Int {
+        var i = openIdx
+        var depth = 0
+        var inString: Char? = null
+        while (i < text.length) {
+            val c = text[i]
+            if (inString != null) {
+                if (c == inString) {
+                    inString = null
+                } else if (c == '\\' && inString == '"' && i + 1 < text.length) {
+                    i++ // skip escaped character
+                }
+            } else {
+                if (c == '"' || c == '`') {
+                    inString = c
+                } else if (c == '{') {
+                    depth++
+                } else if (c == '}') {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return -1
+    }
+
+    private fun findMatchingParen(text: String, openIdx: Int): Int {
+        var i = openIdx
+        var depth = 0
+        var inString: Char? = null
+        while (i < text.length) {
+            val c = text[i]
+            if (inString != null) {
+                if (c == inString) {
+                    inString = null
+                } else if (c == '\\' && inString == '"' && i + 1 < text.length) {
+                    i++ // skip escaped character
+                }
+            } else {
+                if (c == '"' || c == '`') {
+                    inString = c
+                } else if (c == '(') {
+                    depth++
+                } else if (c == ')') {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return -1
     }
 
     private fun findLastForkStep(model: FlowModel): String? {
@@ -310,5 +441,74 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
             .filter { it.type == FlowStepType.Fork }
             .maxByOrNull { model.edges.indexOfFirst { edge -> edge.to == it.name } }
             ?.name
+    }
+
+    private fun createStructuredBranchSteps(model: FlowModel, forkStepName: String, branchSteps: List<BranchStep>, branchNumber: Int) {
+        if (branchSteps.isEmpty()) return
+        
+        var lastStepName: String? = null
+        
+        branchSteps.forEachIndexed { stepIndex, branchStep ->
+            val fullStepName = "${branchStep.name}_branch_$branchNumber"
+            
+            // Create the step
+            val stepType = when (branchStep.type) {
+                BranchStepType.Task -> FlowStepType.Task
+                BranchStepType.Condition -> FlowStepType.Condition
+                BranchStepType.Fork -> FlowStepType.Fork
+                BranchStepType.Join -> FlowStepType.Join
+            }
+            model.steps[fullStepName] = FlowStep(fullStepName, null, stepType)
+            
+            // Connect fork to first step
+            if (stepIndex == 0) {
+                model.edges.add(FlowEdge(forkStepName, fullStepName, "split"))
+            }
+            
+            // Connect to previous step
+            if (lastStepName != null) {
+                model.edges.add(FlowEdge(lastStepName!!, fullStepName, "next"))
+            }
+            
+            // Handle special step types
+            when (branchStep.type) {
+                BranchStepType.Fork -> {
+                    // Recursively create nested fork steps
+                    branchStep.nestedBranches.forEachIndexed { nestedBranchIndex, nestedSteps ->
+                        createStructuredBranchSteps(model, fullStepName, nestedSteps.map { BranchStep(it, BranchStepType.Task) }, branchNumber)
+                    }
+                }
+                BranchStepType.Join -> {
+                    // Connect to the join step from the fork
+                    model.edges.add(FlowEdge(forkStepName, fullStepName, "join"))
+                }
+                BranchStepType.Condition -> {
+                    // Handle condition branching - look for else and then steps
+                    val elseStepIndex = stepIndex + 1
+                    val thenStepIndex = stepIndex + 2
+                    
+                    if (elseStepIndex < branchSteps.size) {
+                        val elseStepName = "${branchSteps[elseStepIndex].name}_branch_$branchNumber"
+                        model.edges.add(FlowEdge(fullStepName, elseStepName, "else"))
+                    }
+                    
+                    if (thenStepIndex < branchSteps.size) {
+                        val thenStepName = "${branchSteps[thenStepIndex].name}_branch_$branchNumber"
+                        model.edges.add(FlowEdge(fullStepName, thenStepName, "then"))
+                        
+                        // Connect else to then
+                        if (elseStepIndex < branchSteps.size) {
+                            val elseStepName = "${branchSteps[elseStepIndex].name}_branch_$branchNumber"
+                            model.edges.add(FlowEdge(elseStepName, thenStepName, "next"))
+                        }
+                    }
+                }
+                else -> {
+                    // Regular step, already connected above
+                }
+            }
+            
+            lastStepName = fullStepName
+        }
     }
 }

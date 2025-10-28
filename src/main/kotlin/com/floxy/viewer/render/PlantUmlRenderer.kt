@@ -46,6 +46,7 @@ class PlantUmlRenderer {
             val label = when (e.kind) {
                 "onFailure" -> " : onFailure"
                 "else" -> " : else"
+                "then" -> " : then"
                 "branch" -> " : branch"
                 "join" -> " : join"
                 "cond_true" -> " : true"
@@ -57,6 +58,8 @@ class PlantUmlRenderer {
             val style = when (e.kind) {
                 "onFailure" -> " ..>"
                 "cond_false" -> " ..>"
+                "else" -> " ..>"
+                "then" -> " -->"
                 "split" -> " -->"
                 "join" -> " -->"
                 else -> " -->"
