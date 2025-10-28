@@ -19,6 +19,16 @@ class PlantUmlRenderer {
                 FlowStepType.Human -> "human"
                 FlowStepType.Parallel -> "parallel"
             }
+            val color = when (step.type) {
+                // Pastel/light colors for readability
+                FlowStepType.Task -> "#E3F2FD"      // light blue
+                FlowStepType.Fork -> "#FFF3E0"      // light orange
+                FlowStepType.Join -> "#E8F5E9"      // light green
+                FlowStepType.SavePoint -> "#F3E5F5" // light purple
+                FlowStepType.Condition -> "#FFFDE7" // light yellow
+                FlowStepType.Human -> "#FBE9E7"     // light red/orange
+                FlowStepType.Parallel -> "#ECEFF1"  // light grey
+            }
             val extras = buildString {
                 if (step.type == FlowStepType.Join && step.joinStrategy != null) {
                     append("\\n[")
@@ -38,7 +48,8 @@ class PlantUmlRenderer {
                 step.name
             }
             
-            sb.appendLine("component \"$displayName$extras\" as ${alias(step.name)} <<$stereotype>>")
+            // PlantUML allows per-component color via trailing #color
+            sb.appendLine("component \"$displayName$extras\" as ${alias(step.name)} <<$stereotype>> $color")
         }
         
         // Edges

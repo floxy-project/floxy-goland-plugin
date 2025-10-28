@@ -41,7 +41,19 @@ class MermaidRenderer {
             }
 
             val displayName = if (step.name.contains("_branch_")) step.name.substringBefore("_branch_") else step.name
-            sb.appendLine("${alias(step.name)}[\"$displayName$extras\"]")
+            val id = alias(step.name)
+            sb.appendLine("$id[\"$displayName$extras\"]")
+            // Color by type using per-node style
+            val fill = when (step.type) {
+                FlowStepType.Task -> "#E3F2FD"
+                FlowStepType.Fork -> "#FFF3E0"
+                FlowStepType.Join -> "#E8F5E9"
+                FlowStepType.SavePoint -> "#F3E5F5"
+                FlowStepType.Condition -> "#FFFDE7"
+                FlowStepType.Human -> "#FBE9E7"
+                FlowStepType.Parallel -> "#ECEFF1"
+            }
+            sb.appendLine("style $id fill:$fill,stroke:#455A64,color:#000")
         }
 
         // Edges

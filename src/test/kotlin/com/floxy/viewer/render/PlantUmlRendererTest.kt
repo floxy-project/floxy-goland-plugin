@@ -4,6 +4,7 @@ import com.floxy.viewer.psi.VisitorBasedFlowAnalyzer
 import com.floxy.viewer.render.PlantUmlRenderer
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import java.util.regex.Pattern
 
 class PlantUmlRendererTest {
     
@@ -48,6 +49,8 @@ class PlantUmlRendererTest {
         
         // Check that it contains split and join connections
         assertTrue(plantUml.contains("split"), "PlantUML should contain split connections")
+        assertTrue(Pattern.compile("<<fork>>\\s+#FFF3E0").matcher(plantUml).find(), "Fork nodes should have color #FFF3E0")
+        assertTrue(Pattern.compile("<<join>>\\s+#E8F5E9").matcher(plantUml).find(), "Join nodes should have color #E8F5E9")
         assertTrue(plantUml.contains("join"), "PlantUML should contain join connections")
     }
 }
