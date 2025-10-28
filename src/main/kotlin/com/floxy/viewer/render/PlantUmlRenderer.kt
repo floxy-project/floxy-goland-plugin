@@ -7,6 +7,7 @@ class PlantUmlRenderer {
         val sb = StringBuilder()
         sb.appendLine("@startuml")
         sb.appendLine("title ${model.name} v${model.version}")
+        
         // Declare nodes
         model.steps.values.forEach { step ->
             val stereotype = when (step.type) {
@@ -16,6 +17,7 @@ class PlantUmlRenderer {
                 FlowStepType.SavePoint -> "savepoint"
                 FlowStepType.Condition -> "cond"
                 FlowStepType.Human -> "human"
+                FlowStepType.Parallel -> "parallel"
             }
             val extras = buildString {
                 if (step.type == FlowStepType.Join && step.joinStrategy != null) {
@@ -24,9 +26,13 @@ class PlantUmlRenderer {
                     step.joinQuorum?.let { append(":$it") }
                     append("]")
                 }
+                if (step.handler != null && step.handler.isNotEmpty()) {
+                    append("\\n(${step.handler})")
+                }
             }
             sb.appendLine("component \"${step.name}$extras\" as ${alias(step.name)} <<$stereotype>>")
         }
+        
         // Edges
         model.edges.forEach { e ->
             val label = when (e.kind) {
@@ -37,10 +43,17 @@ class PlantUmlRenderer {
                 "cond_true" -> " : true"
                 "cond_false" -> " : false"
                 "split" -> " : split"
+                "next" -> ""
                 else -> ""
             }
-            sb.appendLine("${alias(e.from)} --> ${alias(e.to)}$label")
+            val style = when (e.kind) {
+                "onFailure" -> " ..>"
+                "cond_false" -> " ..>"
+                else -> " -->"
+            }
+            sb.appendLine("${alias(e.from)}$style ${alias(e.to)}$label")
         }
+        
         sb.appendLine("@enduml")
         return sb.toString()
     }

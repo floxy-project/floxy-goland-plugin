@@ -54,7 +54,7 @@ class FlowPsiAnalyzer(private val project: Project) {
                         val handler = constantString(a[1])
                         ensureStep(model, stepName, handler, FlowStepType.Task)
                         if (lastStep != null && lastStep != stepName) {
-                            model.edges += FlowEdge(stepName, lastStep!!, kind = "next").swap()
+                            model.edges += FlowEdge(lastStep!!, stepName, kind = "next")
                         }
                         lastStep = stepName
                     }
@@ -113,7 +113,7 @@ class FlowPsiAnalyzer(private val project: Project) {
                             if (model.steps[src] == null) ensureStep(model, src, null, FlowStepType.Task)
                             model.edges += FlowEdge(src, joinName, kind = "join")
                         }
-                        // If we were in reverse traversal from a following step, also connect that to join
+                        // Connect previous step to join
                         if (lastStep != null) {
                             model.edges += FlowEdge(lastStep!!, joinName, kind = "next")
                         }
@@ -124,10 +124,10 @@ class FlowPsiAnalyzer(private val project: Project) {
                     val a = callExpr.argumentList?.expressionList ?: return@forEach
                     if (a.size >= 2) {
                         val condName = constantString(a[0]) ?: return@forEach
-                        ensureStep(model, condName, null, FlowStepType.Condition)
+                        val condition = constantString(a[1])
+                        ensureStep(model, condName, condition, FlowStepType.Condition)
                         if (lastStep != null && lastStep != condName) {
-                            // True branch goes to the next sequential step
-                            model.edges += FlowEdge(condName, lastStep!!, kind = "cond_true")
+                            model.edges += FlowEdge(lastStep!!, condName, kind = "next")
                         }
                         // Else branch: try to resolve first Step(...) call inside func literal (arg #3)
                         val elseFunc = a.getOrNull(2) as? GoFunctionLit
@@ -152,7 +152,7 @@ class FlowPsiAnalyzer(private val project: Project) {
                         val forkName = constantString(a[0]) ?: return@forEach
                         ensureStep(model, forkName, null, FlowStepType.Fork)
                         if (lastStep != null && lastStep != forkName) {
-                            model.edges += FlowEdge(lastStep!!, forkName, kind = "split")
+                            model.edges += FlowEdge(lastStep!!, forkName, kind = "next")
                         }
                         // Parse branch tasks from NewTask(...) calls
                         val branchHeads = mutableListOf<String>()
@@ -174,6 +174,8 @@ class FlowPsiAnalyzer(private val project: Project) {
                         branchHeads.forEach { head ->
                             model.edges += FlowEdge(head, joinName, kind = "join")
                         }
+                        // Connect fork to join
+                        model.edges += FlowEdge(forkName, joinName, kind = "next")
                         lastStep = joinName
                     }
                 }
@@ -183,7 +185,20 @@ class FlowPsiAnalyzer(private val project: Project) {
                         val forkName = constantString(a[0]) ?: return@forEach
                         ensureStep(model, forkName, null, FlowStepType.Fork)
                         if (lastStep != null && lastStep != forkName) {
-                            model.edges += FlowEdge(lastStep!!, forkName, kind = "split")
+                            model.edges += FlowEdge(lastStep!!, forkName, kind = "next")
+                        }
+                        // Parse branch functions
+                        val branchHeads = mutableListOf<String>()
+                        for (i in 1 until a.size) {
+                            val branchFunc = a[i] as? GoFunctionLit
+                            if (branchFunc != null) {
+                                val branchHead = findFirstStepNameInFunc(branchFunc)
+                                if (branchHead != null) {
+                                    ensureStep(model, branchHead, null, FlowStepType.Task)
+                                    model.edges += FlowEdge(forkName, branchHead, kind = "branch")
+                                    branchHeads += branchHead
+                                }
+                            }
                         }
                         lastStep = forkName
                     }
@@ -195,7 +210,7 @@ class FlowPsiAnalyzer(private val project: Project) {
                         val joinName = constantString(a[2]) ?: return@forEach
                         ensureStep(model, forkName, null, FlowStepType.Fork)
                         if (lastStep != null && lastStep != forkName) {
-                            model.edges += FlowEdge(lastStep!!, forkName, kind = "split")
+                            model.edges += FlowEdge(lastStep!!, forkName, kind = "next")
                         }
                         if (model.steps[joinName] == null) {
                             model.steps[joinName] = FlowStep(name = joinName, type = FlowStepType.Join)
@@ -298,6 +313,4 @@ class FlowPsiAnalyzer(private val project: Project) {
         val handler = constantString(args.getOrNull(1))
         return stepName to handler
     }
-
-    private fun FlowEdge.swap(): FlowEdge = FlowEdge(from = this.to, to = this.from, kind = this.kind)
 }
