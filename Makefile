@@ -15,7 +15,7 @@
 SHELL := /bin/bash
 
 # Resolve Gradle executable: prefer root wrapper, otherwise use system gradle
-ROOT_GRADLEW := gradlew
+ROOT_GRADLEW := ./gradlew
 GRADLE_BIN   := $(if $(wildcard $(ROOT_GRADLEW)),$(ROOT_GRADLEW),gradle)
 # Always execute Gradle in this module directory
 GRADLE := $(GRADLE_BIN) -p .

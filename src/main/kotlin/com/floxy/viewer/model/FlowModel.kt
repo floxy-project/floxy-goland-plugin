@@ -1,6 +1,6 @@
 package com.floxy.viewer.model
 
-enum class FlowStepType { Task, Fork, Join, SavePoint, Condition, Human }
+enum class FlowStepType { Task, Fork, Join, SavePoint, Condition, Human, Parallel }
 
 data class FlowStep(
     val name: String,

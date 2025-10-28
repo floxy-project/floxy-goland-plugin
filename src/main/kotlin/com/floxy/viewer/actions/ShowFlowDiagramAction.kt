@@ -6,6 +6,7 @@ import com.goide.psi.GoFile
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.ui.Messages
@@ -20,7 +21,11 @@ class ShowFlowDiagramAction : AnAction(), DumbAware {
             Messages.showInfoMessage(project, "Not a Go file", "Floxy Viewer")
             return
         }
-        val models = project.getService(FlowModelService::class.java).collectFromFile(vFile)
+        
+        val models = ApplicationManager.getApplication().runReadAction<List<com.floxy.viewer.model.FlowModel>> {
+            project.getService(FlowModelService::class.java).collectFromFile(vFile)
+        }
+        
         if (models.isEmpty()) {
             Messages.showInfoMessage(project, "No floxy.Builder flows found in file", "Floxy Viewer")
             return

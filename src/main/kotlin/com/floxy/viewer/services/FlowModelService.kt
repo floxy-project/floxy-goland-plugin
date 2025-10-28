@@ -52,12 +52,7 @@ class FlowModelService(private val project: Project) : Disposable {
             override fun childMoved(event: PsiTreeChangeEvent) = schedule(event)
         }, this)
 
-        // Listen VFS changes (rename/move/delete)
-        project.messageBus.connect(this).subscribe(BulkFileListener.TOPIC, object : BulkFileListener {
-            override fun after(events: MutableList<out VFileEvent>) {
-                events.forEach { e -> e.file?.let { schedule(it) } }
-            }
-        })
+        // Listen VFS changes (rename/move/delete) - removed for compatibility
     }
 
     private fun schedule(event: PsiTreeChangeEvent) {
@@ -82,11 +77,13 @@ class FlowModelService(private val project: Project) : Disposable {
 
     fun collectFromFile(file: VirtualFile): List<FlowModel> {
         return cache[file] ?: run {
-            val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return emptyList()
-            val analyzer = FlowPsiAnalyzer(project)
-            val models = analyzer.collectFlows(psiFile)
-            cache[file] = models
-            models
+            ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
+                val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
+                val analyzer = FlowPsiAnalyzer(project)
+                val models = analyzer.collectFlows(psiFile)
+                cache[file] = models
+                models
+            }
         }
     }
 

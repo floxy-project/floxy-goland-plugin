@@ -43,7 +43,7 @@ class ExportToImageAction : AnAction() {
                 val bytes = renderToBytes(puml, format)
                 val name = "${model.name}_v${model.version}.${format.ext}"
                 val child = dir.findChild(name) ?: dir.createChildData(this, name)
-                VfsUtil.saveBytes(child, bytes)
+                child.setBinaryContent(bytes)
                 saved++
             }
         }, "Exporting Floxy diagrams", false, project)
@@ -66,7 +66,7 @@ class ExportToImageAction : AnAction() {
 
     private fun chooseFormat(project: com.intellij.openapi.project.Project): ImageFormat? {
         val options = arrayOf("PNG", "SVG")
-        val idx = Messages.showChooseDialog(project, "Choose export format", "Floxy Export", options, options[0], null)
+        val idx = Messages.showDialog(project, "Choose export format", "Floxy Export", options, 0, null)
         return when (idx) {
             0 -> ImageFormat.PNG
             1 -> ImageFormat.SVG

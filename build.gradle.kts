@@ -31,6 +31,10 @@ tasks {
     runIde {
         ideDir.set(file("/Users/roman/Applications/GoLand.app"))
     }
+
+    buildSearchableOptions {
+        enabled = false
+    }
 }
 
 dependencies {
