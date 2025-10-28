@@ -215,7 +215,20 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
                     if (strs.isNotEmpty()) {
                         val stepName = strs[0]
                         model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Join)
-                        if (lastStep != null) {
+                        
+                        // Find the last steps from all parallel branches and connect them to join
+                        val lastForkStep = findLastForkStep(model)
+                        if (lastForkStep != null) {
+                            val forkStep = model.steps[lastForkStep]
+                            forkStep?.parallelBranches?.forEachIndexed { branchIndex, branchSteps ->
+                                if (branchSteps.isNotEmpty()) {
+                                    val lastBranchStepName = "${branchSteps.last()}_branch_${branchIndex + 1}"
+                                    model.edges.add(FlowEdge(lastBranchStepName, stepName, "join"))
+                                }
+                            }
+                        }
+                        
+                        if (lastStep != null && lastStep != stepName) {
                             model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
                         }
                         lastStep = stepName
@@ -226,10 +239,33 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
                     val strs = extractStrings(args, 1)
                     if (strs.isNotEmpty()) {
                         val stepName = strs[0]
-                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Fork)
+                        val parallelBranches = extractParallelBranches(callText)
+                        
+                        // Create the fork step
+                        model.steps[stepName] = FlowStep(stepName, null, FlowStepType.Fork, parallelBranches = parallelBranches)
                         if (lastStep != null && lastStep != stepName) {
                             model.edges.add(FlowEdge(lastStep!!, stepName, "next"))
                         }
+                        
+                        // Create steps for each parallel branch and add connections
+                        parallelBranches.forEachIndexed { branchIndex, branchSteps ->
+                            branchSteps.forEachIndexed { stepIndex, branchStepName ->
+                                val fullStepName = "${branchStepName}_branch_${branchIndex + 1}"
+                                model.steps[fullStepName] = FlowStep(fullStepName, null, FlowStepType.Task)
+                                
+                                // Connect fork to first step of each branch
+                                if (stepIndex == 0) {
+                                    model.edges.add(FlowEdge(stepName, fullStepName, "split"))
+                                }
+                                
+                                // Connect steps within the same branch
+                                if (stepIndex > 0) {
+                                    val prevStepName = "${branchSteps[stepIndex - 1]}_branch_${branchIndex + 1}"
+                                    model.edges.add(FlowEdge(prevStepName, fullStepName, "next"))
+                                }
+                            }
+                        }
+                        
                         lastStep = stepName
                     }
                 }
@@ -239,5 +275,40 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
         }
 
         return if (model.steps.isNotEmpty()) model else null
+    }
+
+    private fun extractParallelBranches(forkCallText: String): List<List<String>> {
+        val branches = mutableListOf<List<String>>()
+        
+        // Find all function calls within the Fork call
+        val funcPattern = Regex("""func\s*\(\s*\w*\s*\*\s*floxy\.Builder\s*\)\s*\{([^}]*)\}""", setOf(RegexOption.DOT_MATCHES_ALL))
+        val matches = funcPattern.findAll(forkCallText)
+        
+        for (match in matches) {
+            val branchContent = match.groupValues[1]
+            val branchSteps = mutableListOf<String>()
+            
+            // Extract Step calls from this branch
+            val stepPattern = Regex("""\.\s*Step\s*\(\s*([\"`])([^\"`]+)\1""")
+            val stepMatches = stepPattern.findAll(branchContent)
+            
+            for (stepMatch in stepMatches) {
+                val stepName = stepMatch.groupValues[2]
+                branchSteps.add(stepName)
+            }
+            
+            if (branchSteps.isNotEmpty()) {
+                branches.add(branchSteps)
+            }
+        }
+        
+        return branches
+    }
+
+    private fun findLastForkStep(model: FlowModel): String? {
+        return model.steps.values
+            .filter { it.type == FlowStepType.Fork }
+            .maxByOrNull { model.edges.indexOfFirst { edge -> edge.to == it.name } }
+            ?.name
     }
 }

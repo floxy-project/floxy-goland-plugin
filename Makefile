@@ -66,8 +66,7 @@ verify:
 	@$(GRADLE) --no-daemon verifyPlugin
 
 test:
-	@echo -e "$(G)[test]$(Z) Running tests..."
-	@$(GRADLE) --no-daemon test
+	./gradlew -p . --no-daemon unitTest
 
 clean:
 	@echo -e "$(G)[clean]$(Z) Cleaning..."

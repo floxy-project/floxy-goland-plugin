@@ -10,7 +10,9 @@ data class FlowStep(
     val maxRetries: Int? = null,
     // Optional join metadata (for Join nodes)
     val joinStrategy: String? = null,
-    val joinQuorum: Int? = null
+    val joinQuorum: Int? = null,
+    // Parallel branches for Fork steps
+    val parallelBranches: List<List<String>> = emptyList()
 )
 
 data class FlowEdge(

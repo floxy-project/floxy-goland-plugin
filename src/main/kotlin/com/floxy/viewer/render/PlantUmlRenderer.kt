@@ -30,7 +30,15 @@ class PlantUmlRenderer {
                     append("\\n(${step.handler})")
                 }
             }
-            sb.appendLine("component \"${step.name}$extras\" as ${alias(step.name)} <<$stereotype>>")
+            
+            // For parallel branch steps, show original name without branch suffix
+            val displayName = if (step.name.contains("_branch_")) {
+                step.name.substringBefore("_branch_")
+            } else {
+                step.name
+            }
+            
+            sb.appendLine("component \"$displayName$extras\" as ${alias(step.name)} <<$stereotype>>")
         }
         
         // Edges
@@ -49,6 +57,8 @@ class PlantUmlRenderer {
             val style = when (e.kind) {
                 "onFailure" -> " ..>"
                 "cond_false" -> " ..>"
+                "split" -> " -->"
+                "join" -> " -->"
                 else -> " -->"
             }
             sb.appendLine("${alias(e.from)}$style ${alias(e.to)}$label")
