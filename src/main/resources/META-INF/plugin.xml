@@ -1,0 +1,34 @@
+<idea-plugin>
+  <id>com.floxy.flow.viewer</id>
+  <name>Floxy Flow Viewer</name>
+  <vendor email="" url="https://github.com/rom8726/floxy-project">Floxy</vendor>
+  <version>0.1.0</version>
+  <description>Visualize and validate floxy.Builder workflows in GoLand.</description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>org.jetbrains.plugins.go</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <projectService serviceImplementation="com.floxy.viewer.services.FlowModelService"/>
+    <toolWindow id="Floxy" factoryClass="com.floxy.viewer.ui.FloxyToolWindowFactory" anchor="left" icon="AllIcons.Actions.ListFiles"/>
+  </extensions>
+
+  <actions>
+    <action id="com.floxy.viewer.ShowFlowDiagramAction" class="com.floxy.viewer.actions.ShowFlowDiagramAction" text="Show Floxy Flow Diagram" description="Parse and show Floxy flow diagram">
+      <add-to-group group-id="GoEditorPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift F"/>
+    </action>
+
+    <action id="com.floxy.viewer.ExportToPlantUMLAction" class="com.floxy.viewer.actions.ExportToPlantUMLAction" text="Export Floxy Flow to PlantUML" description="Export Floxy flow to .puml">
+      <add-to-group group-id="GoEditorPopupMenu" anchor="last"/>
+    </action>
+
+    <action id="com.floxy.viewer.ExportToImageAction" class="com.floxy.viewer.actions.ExportToImageAction" text="Export Floxy Diagram as Image" description="Export PlantUML-rendered diagram as PNG/SVG">
+      <add-to-group group-id="GoEditorPopupMenu" anchor="last"/>
+    </action>
+
+    <action id="com.floxy.viewer.ValidateFlowAction" class="com.floxy.viewer.actions.ValidateFlowAction" text="Validate Floxy Flow" description="Validate flow graph">
+      <add-to-group group-id="GoEditorPopupMenu" anchor="last"/>
+    </action>
+  </actions>
+</idea-plugin>
