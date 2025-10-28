@@ -18,8 +18,8 @@ class FlowPsiAnalyzer(private val project: Project) {
         // Get file text and parse it
         val fileText = file.text
         
-        // Find all floxy.NewBuilder patterns
-        val newBuilderPattern = Regex("""floxy\.NewBuilder\("([^"]+)",\s*(\d+)\)""")
+        // Find all floxy.NewBuilder patterns (support common typo NewBuidler and package aliases)
+        val newBuilderPattern = Regex("""\b(?:[A-Za-z_]\w*)\.(?:NewBuilder|NewBuidler)\("([^"]+)",\s*(\d+)\)""")
         val matches = newBuilderPattern.findAll(fileText)
         
         for (match in matches) {
@@ -55,12 +55,13 @@ class FlowPsiAnalyzer(private val project: Project) {
         val chainText = fileText.substring(newBuilderRange.last + 1, buildRange.first)
         
         // Parse method calls
-        val stepPattern = Regex("""\.(Step|Then)\("([^"]+)",\s*"([^"]+)"\)""")
-        val onFailurePattern = Regex("""\.OnFailure\("([^"]+)",\s*"([^"]+)"\)""")
-        val savePointPattern = Regex("""\.SavePoint\("([^"]+)"\)""")
-        val waitHumanPattern = Regex("""\.WaitHumanConfirm\("([^"]+)"\)""")
-        val joinStepPattern = Regex("""\.JoinStep\("([^"]+)"\)""")
-        val forkPattern = Regex("""\.Fork\("([^"]+)"\)""")
+        // Allow optional extra arguments after required strings to match opts/... and complex signatures
+        val stepPattern = Regex("""\.(Step|Then)\(\s*"([^"]+)"\s*,\s*"([^"]+)"(?:[^)]*)\)""")
+        val onFailurePattern = Regex("""\.OnFailure\(\s*"([^"]+)"\s*,\s*"([^"]+)"(?:[^)]*)\)""")
+        val savePointPattern = Regex("""\.SavePoint\(\s*"([^"]+)"\s*\)""")
+        val waitHumanPattern = Regex("""\.WaitHumanConfirm\(\s*"([^"]+)"(?:[^)]*)\)""")
+        val joinStepPattern = Regex("""\.JoinStep\(\s*"([^"]+)"[^)]*\)""")
+        val forkPattern = Regex("""\.Fork\(\s*"([^"]+)"[^)]*\)""")
         
         var lastStep: String? = null
         
