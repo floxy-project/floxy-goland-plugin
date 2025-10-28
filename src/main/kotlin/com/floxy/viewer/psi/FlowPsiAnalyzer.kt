@@ -448,7 +448,15 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
         
         var lastStepName: String? = null
         
+        var skipNextSteps = 0
+        
         branchSteps.forEachIndexed { stepIndex, branchStep ->
+            // Skip steps that are already processed as part of condition branching
+            if (skipNextSteps > 0) {
+                skipNextSteps--
+                return@forEachIndexed
+            }
+            
             val fullStepName = "${branchStep.name}_branch_$branchNumber"
             
             // Create the step
@@ -465,50 +473,61 @@ class FlowPsiAnalyzer(private val project: Project? = null) {
                 model.edges.add(FlowEdge(forkStepName, fullStepName, "split"))
             }
             
-            // Connect to previous step
-            if (lastStepName != null) {
-                model.edges.add(FlowEdge(lastStepName!!, fullStepName, "next"))
-            }
-            
             // Handle special step types
             when (branchStep.type) {
                 BranchStepType.Fork -> {
+                    // Connect to previous step
+                    if (lastStepName != null) {
+                        model.edges.add(FlowEdge(lastStepName!!, fullStepName, "next"))
+                    }
                     // Recursively create nested fork steps
                     branchStep.nestedBranches.forEachIndexed { nestedBranchIndex, nestedSteps ->
                         createStructuredBranchSteps(model, fullStepName, nestedSteps.map { BranchStep(it, BranchStepType.Task) }, branchNumber)
                     }
+                    lastStepName = fullStepName
                 }
                 BranchStepType.Join -> {
+                    // Connect to previous step
+                    if (lastStepName != null) {
+                        model.edges.add(FlowEdge(lastStepName!!, fullStepName, "next"))
+                    }
                     // Connect to the join step from the fork
                     model.edges.add(FlowEdge(forkStepName, fullStepName, "join"))
+                    lastStepName = fullStepName
                 }
                 BranchStepType.Condition -> {
+                    // Connect to previous step
+                    if (lastStepName != null) {
+                        model.edges.add(FlowEdge(lastStepName!!, fullStepName, "next"))
+                    }
                     // Handle condition branching - look for else and then steps
                     val elseStepIndex = stepIndex + 1
                     val thenStepIndex = stepIndex + 2
                     
                     if (elseStepIndex < branchSteps.size) {
                         val elseStepName = "${branchSteps[elseStepIndex].name}_branch_$branchNumber"
+                        model.steps[elseStepName] = FlowStep(elseStepName, null, FlowStepType.Task)
                         model.edges.add(FlowEdge(fullStepName, elseStepName, "else"))
+                        skipNextSteps++ // Skip processing else step in main loop
                     }
                     
                     if (thenStepIndex < branchSteps.size) {
                         val thenStepName = "${branchSteps[thenStepIndex].name}_branch_$branchNumber"
+                        model.steps[thenStepName] = FlowStep(thenStepName, null, FlowStepType.Task)
                         model.edges.add(FlowEdge(fullStepName, thenStepName, "then"))
-                        
-                        // Connect else to then
-                        if (elseStepIndex < branchSteps.size) {
-                            val elseStepName = "${branchSteps[elseStepIndex].name}_branch_$branchNumber"
-                            model.edges.add(FlowEdge(elseStepName, thenStepName, "next"))
-                        }
+                        skipNextSteps++ // Skip processing then step in main loop
+                        // НЕ создаем связь между else и then - это альтернативные ветки!
                     }
+                    lastStepName = fullStepName
                 }
                 else -> {
-                    // Regular step, already connected above
+                    // Regular step - connect to previous step
+                    if (lastStepName != null) {
+                        model.edges.add(FlowEdge(lastStepName!!, fullStepName, "next"))
+                    }
+                    lastStepName = fullStepName
                 }
             }
-            
-            lastStepName = fullStepName
         }
     }
 }
