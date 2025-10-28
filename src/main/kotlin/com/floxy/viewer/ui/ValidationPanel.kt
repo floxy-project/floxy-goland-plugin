@@ -33,32 +33,36 @@ class ValidationPanel(private val project: Project) : JPanel(BorderLayout()) {
             val sel = list.selectedValue ?: return@addListSelectionListener
             val stepName = extractQuoted(sel) ?: return@addListSelectionListener
             val editor = FileEditorManager.getInstance(project).selectedEditor ?: return@addListSelectionListener
-            val psiFile = PsiManager.getInstance(project).findFile(editor.file) as? GoFile ?: return@addListSelectionListener
-            // Try to navigate to a function with the same name
-            // Note: detailed mapping could be added later using model context
-            // For now, do nothing if not resolvable
         }
     }
 
     fun refreshFromEditor() {
-        listModel.clear()
-        val editor = FileEditorManager.getInstance(project).selectedEditor ?: return
-        val file = editor.file ?: return
-        val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return
-        val analyzer = VisitorBasedFlowAnalyzer()
-        val results = analyzer.analyzeFlowsDetailed(psiFile.text)
-        if (results.isEmpty()) {
-            listModel.addElement("No floxy.NewBuilder flows found in file")
-            return
-        }
-        results.forEach { r ->
-            listModel.addElement("Flow ${r.model.name} v${r.model.version}:")
-            if (r.errors.isEmpty()) {
-                listModel.addElement("  OK")
-            } else {
-                r.errors.forEach { err -> listModel.addElement("  [ERROR] $err") }
+        // Compute results under read action to safely access PSI
+        val lines: List<String> = ApplicationManager.getApplication().runReadAction<List<String>> {
+            val editor = FileEditorManager.getInstance(project).selectedEditor ?: return@runReadAction emptyList()
+            val file = editor.file ?: return@runReadAction emptyList()
+            val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
+            val analyzer = VisitorBasedFlowAnalyzer()
+            val results = analyzer.analyzeFlowsDetailed(psiFile.text)
+            if (results.isEmpty()) {
+                return@runReadAction listOf("No floxy.NewBuilder flows found in file")
             }
-            listModel.addElement("")
+            buildList {
+                results.forEach { r ->
+                    add("Flow ${r.model.name} v${r.model.version}:")
+                    if (r.errors.isEmpty()) {
+                        add("  OK")
+                    } else {
+                        r.errors.forEach { err -> add("  [ERROR] $err") }
+                    }
+                    add("")
+                }
+            }
+        }
+        // Update UI on EDT
+        ApplicationManager.getApplication().invokeLater {
+            listModel.clear()
+            lines.forEach { listModel.addElement(it) }
         }
     }
 

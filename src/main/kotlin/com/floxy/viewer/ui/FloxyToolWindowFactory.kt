@@ -25,26 +25,26 @@ class FloxyToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val contentFactory = ContentFactory.getInstance()
 
-        // Flows tab
-        val flowsPanelWrap = SimpleToolWindowPanel(true, true)
-        flowsPanelWrap.setContent(createFlowsPanel(project))
-        toolWindow.contentManager.addContent(contentFactory.createContent(flowsPanelWrap, "Flows", false))
+//        // Flows tab
+//        val flowsPanelWrap = SimpleToolWindowPanel(true, true)
+//        flowsPanelWrap.setContent(createFlowsPanel(project))
+//        toolWindow.contentManager.addContent(contentFactory.createContent(flowsPanelWrap, "Flows", false))
 
         // Diagram tab (embedded PlantUML)
         val diagramPanel = PlantUmlPreviewPanel(project)
         diagramPanel.refreshFromEditor()
         toolWindow.contentManager.addContent(contentFactory.createContent(diagramPanel, "Diagram", false))
 
-        // Validation tab
-        val validationPanel = ValidationPanel(project)
-        validationPanel.refreshFromEditor()
-        toolWindow.contentManager.addContent(contentFactory.createContent(validationPanel, "Validation", false))
+//        // Validation tab
+//        val validationPanel = ValidationPanel(project)
+//        validationPanel.refreshFromEditor()
+//        toolWindow.contentManager.addContent(contentFactory.createContent(validationPanel, "Validation", false))
 
-        // Placeholder tabs
-        val instancesPanel = JPanel(BorderLayout()).apply { add(JBLabel("Instances (future)"), BorderLayout.CENTER) }
-        val eventsPanel = JPanel(BorderLayout()).apply { add(JBLabel("Events (future)"), BorderLayout.CENTER) }
-        toolWindow.contentManager.addContent(contentFactory.createContent(instancesPanel, "Instances", false))
-        toolWindow.contentManager.addContent(contentFactory.createContent(eventsPanel, "Events", false))
+//        // Placeholder tabs
+//        val instancesPanel = JPanel(BorderLayout()).apply { add(JBLabel("Instances (future)"), BorderLayout.CENTER) }
+//        val eventsPanel = JPanel(BorderLayout()).apply { add(JBLabel("Events (future)"), BorderLayout.CENTER) }
+//        toolWindow.contentManager.addContent(contentFactory.createContent(instancesPanel, "Instances", false))
+//        toolWindow.contentManager.addContent(contentFactory.createContent(eventsPanel, "Events", false))
     }
 
     private fun createFlowsPanel(project: Project): JPanel {

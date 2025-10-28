@@ -66,9 +66,9 @@ class FlowModelService(private val project: Project) : Disposable {
     }
 
     private fun refresh(file: VirtualFile) {
-        val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return
         val analyzer = VisitorBasedFlowAnalyzer()
         val models = ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
+            val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
             analyzer.collectFlowsFromText(psiFile.text)
         }
         cache[file] = models
