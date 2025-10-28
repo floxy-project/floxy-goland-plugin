@@ -35,7 +35,6 @@ tasks {
     }
 
     runIde {
-        // On macOS, the actual IDE home is under .app/Contents
         val macIdeContents = file("/Users/roman/Applications/GoLand.app/Contents")
         if (macIdeContents.exists()) {
             ideDir.set(macIdeContents)
@@ -57,7 +56,6 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-console:1.11.3")
 }
 
-// Custom unit test runner that bypasses IntelliJ Gradle plugin's Test task integrations
 tasks.register<JavaExec>("unitTest") {
     group = "verification"
     description = "Runs unit tests via JUnit ConsoleLauncher"
