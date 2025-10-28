@@ -1,7 +1,7 @@
 package com.floxy.viewer.services
 
 import com.floxy.viewer.model.FlowModel
-import com.floxy.viewer.psi.FlowPsiAnalyzer
+import com.floxy.viewer.psi.VisitorBasedFlowAnalyzer
 import com.goide.psi.GoFile
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -67,9 +67,9 @@ class FlowModelService(private val project: Project) : Disposable {
 
     private fun refresh(file: VirtualFile) {
         val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return
-        val analyzer = FlowPsiAnalyzer(project)
+        val analyzer = VisitorBasedFlowAnalyzer()
         val models = ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
-            analyzer.collectFlows(psiFile)
+            analyzer.collectFlowsFromText(psiFile.text)
         }
         cache[file] = models
         project.messageBus.syncPublisher(TOPIC).onModelsUpdated(ModelsEvent(file, models))
@@ -79,8 +79,8 @@ class FlowModelService(private val project: Project) : Disposable {
         return cache[file] ?: run {
             ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
                 val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
-                val analyzer = FlowPsiAnalyzer(project)
-                val models = analyzer.collectFlows(psiFile)
+                val analyzer = VisitorBasedFlowAnalyzer()
+                val models = analyzer.collectFlowsFromText(psiFile.text)
                 cache[file] = models
                 models
             }
