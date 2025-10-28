@@ -1,1 +1,8 @@
-rootProject.name = "floxy-flow-viewer"
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "floxy-idea-plugin"

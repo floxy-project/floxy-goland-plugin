@@ -1,55 +1,38 @@
 plugins {
-    kotlin("jvm") version "1.9.24"
-    id("org.jetbrains.intellij.platform") version "2.1.0"
+    id("org.jetbrains.intellij") version "1.17.1"
+    kotlin("jvm") version "2.2.0"
 }
+
+group = "com.floxy"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
-    intellijPlatform {
-        defaultRepositories()
-    }
 }
 
-intellijPlatform {
-    defaultIdeProduct = IntelliJPlatform.GoLand("2025.2")
-    pluginConfiguration {
-        name = "Floxy Flow Viewer"
-        id = "com.floxy.flow.viewer"
-        version = "0.1.0"
-        vendor {
-            name = "Floxy"
-            url = "https://github.com/rom8726/floxy-idea-plugin"
-        }
-        ideaVersion {
-            sinceBuild.set("252.0")
-            untilBuild.set("252.*")
-        }
-        description = "Visualize and validate floxy.Builder workflows in GoLand."
+intellij {
+    // GoLand 2025.2
+    type.set("GO")
+    version.set("2025.2")
+
+    plugins.set(listOf("org.jetbrains.plugins.go"))
+}
+
+tasks {
+    patchPluginXml {
+        sinceBuild.set("252.0")
+        untilBuild.set("253.*")
     }
 
-    plugins {
-        bundled("com.intellij.java")
-        bundled("org.jetbrains.plugins.go")
-        // optional: diagram APIs are available in platform
+    buildPlugin {
+        archiveFileName.set("floxy-goland-plugin.zip")
+    }
+
+    runIde {
+        ideDir.set(file("/Users/roman/Applications/GoLand.app"))
     }
 }
 
 dependencies {
-    intellijPlatform {
-        /* Use GoLand platform dependencies */
-        goLand("2025.2")
-        bundledPlugin("org.jetbrains.plugins.go")
-    }
-    implementation("net.sourceforge.plantuml:plantuml:1.2024.7")
-}
-
-kotlin {
-    jvmToolchain(17)
-}
-
-sourceSets {
-    main {
-        java.srcDirs("src/main/kotlin")
-        resources.srcDirs("src/main/resources")
-    }
+    implementation("net.sourceforge.plantuml:plantuml:1.2024.5")
 }
