@@ -54,7 +54,7 @@ class Validator {
 
         // 4) Empty branches (Fork/Parallel heads must have branch edges)
         model.steps.values.filter { it.type == FlowStepType.Fork }.forEach { fork ->
-            val branches = outgoing[fork.name]?.filter { it.kind == "branch" } ?: emptyList()
+            val branches = outgoing[fork.name]?.filter { it.kind == "split" } ?: emptyList()
             if (branches.isEmpty()) issues += Issue("ERROR", "Fork '${fork.name}' has no branches")
         }
 
@@ -85,7 +85,7 @@ class Validator {
 
         // 7) Inconsistent retry/idempotency in parallel group (Fork)
         model.steps.values.filter { it.type == FlowStepType.Fork }.forEach { fork ->
-            val branchHeads = outgoing[fork.name]?.filter { it.kind == "branch" }?.map { it.to } ?: emptyList()
+            val branchHeads = outgoing[fork.name]?.filter { it.kind == "split" }?.map { it.to } ?: emptyList()
             if (branchHeads.size >= 2) {
                 val retries = branchHeads.mapNotNull { model.steps[it]?.maxRetries }.toSet()
                 val idempot = branchHeads.mapNotNull { model.steps[it]?.noIdempotent }.toSet()

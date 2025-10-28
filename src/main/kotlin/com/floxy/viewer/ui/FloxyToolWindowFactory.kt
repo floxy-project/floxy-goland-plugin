@@ -25,7 +25,7 @@ class FloxyToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val contentFactory = ContentFactory.getInstance()
 
-//        // Flows tab
+        // Flows tab
 //        val flowsPanelWrap = SimpleToolWindowPanel(true, true)
 //        flowsPanelWrap.setContent(createFlowsPanel(project))
 //        toolWindow.contentManager.addContent(contentFactory.createContent(flowsPanelWrap, "Flows", false))
@@ -35,7 +35,7 @@ class FloxyToolWindowFactory : ToolWindowFactory, DumbAware {
         diagramPanel.refreshFromEditor()
         toolWindow.contentManager.addContent(contentFactory.createContent(diagramPanel, "Diagram", false))
 
-//        // Validation tab
+        // Validation tab
 //        val validationPanel = ValidationPanel(project)
 //        validationPanel.refreshFromEditor()
 //        toolWindow.contentManager.addContent(contentFactory.createContent(validationPanel, "Validation", false))
