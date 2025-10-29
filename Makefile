@@ -51,8 +51,7 @@ paths:
 build:
 	@echo -e "$(G)[build]$(Z) Building plugin ZIP..."
 	@$(GRADLE) --no-daemon buildPlugin
-	@cp build/distributions/* dist/
-	@echo -e "$(G)[build]$(Z) Done. See: dist/"
+	@echo -e "$(G)[build]$(Z) Done."
 
 # Alias
 

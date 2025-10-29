@@ -7,18 +7,13 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.ModificationTracker
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.newvfs.BulkFileListener
-import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiTreeChangeAdapter
 import com.intellij.psi.PsiTreeChangeEvent
 import com.intellij.util.Alarm
 import com.intellij.util.messages.Topic
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 
 @Service(Service.Level.PROJECT)
 class FlowModelService(private val project: Project) : Disposable {
@@ -56,32 +51,42 @@ class FlowModelService(private val project: Project) : Disposable {
     }
 
     private fun schedule(event: PsiTreeChangeEvent) {
-        val file = event.file?.virtualFile ?: return
+        val file = event.file?.virtualFile
+        if (file == null || !file.isValid) return
         schedule(file)
     }
 
     private fun schedule(file: VirtualFile) {
+        if (!file.isValid || project.isDisposed) return
         alarm.cancelAllRequests()
         alarm.addRequest({ refresh(file) }, DEBOUNCE_MS)
     }
 
     private fun refresh(file: VirtualFile) {
+        if (project.isDisposed || !file.isValid) return
         val analyzer = VisitorBasedFlowAnalyzer()
         val models = ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
+            if (project.isDisposed || !file.isValid) return@runReadAction emptyList()
             val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
             analyzer.collectFlowsFromText(psiFile.text)
         }
+        // If file became invalid during computation, avoid touching cache or publishing
+        if (!file.isValid || project.isDisposed) return
         cache[file] = models
         project.messageBus.syncPublisher(TOPIC).onModelsUpdated(ModelsEvent(file, models))
     }
 
     fun collectFromFile(file: VirtualFile): List<FlowModel> {
+        if (!file.isValid || project.isDisposed) return emptyList()
         return cache[file] ?: run {
             ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
+                if (project.isDisposed || !file.isValid) return@runReadAction emptyList()
                 val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
                 val analyzer = VisitorBasedFlowAnalyzer()
                 val models = analyzer.collectFlowsFromText(psiFile.text)
-                cache[file] = models
+                if (file.isValid && !project.isDisposed) {
+                    cache[file] = models
+                }
                 models
             }
         }
