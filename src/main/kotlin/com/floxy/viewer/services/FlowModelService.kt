@@ -36,7 +36,7 @@ class FlowModelService(private val project: Project) : Disposable {
     companion object {
         val TOPIC: Topic<Listener> = Topic.create("FloxyFlowsUpdated", Listener::class.java)
         val SELECTION_TOPIC: Topic<SelectionListener> = Topic.create("FloxyStepSelected", SelectionListener::class.java)
-        private const val DEBOUNCE_MS: Int = 1200
+        private const val DEBOUNCE_MS: Int = 2000
     }
 
     private val cache = ConcurrentHashMap<VirtualFile, List<FlowModel>>()
