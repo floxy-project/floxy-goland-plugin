@@ -36,9 +36,9 @@ class FloxyToolWindowFactory : ToolWindowFactory, DumbAware {
         toolWindow.contentManager.addContent(contentFactory.createContent(diagramPanel, "Diagram", false))
 
         // Validation tab
-//        val validationPanel = ValidationPanel(project)
-//        validationPanel.refreshFromEditor()
-//        toolWindow.contentManager.addContent(contentFactory.createContent(validationPanel, "Validation", false))
+        val validationPanel = ValidationPanel(project)
+        validationPanel.refreshFromEditor()
+        toolWindow.contentManager.addContent(contentFactory.createContent(validationPanel, "Validation", false))
 
 //        // Placeholder tabs
 //        val instancesPanel = JPanel(BorderLayout()).apply { add(JBLabel("Instances (future)"), BorderLayout.CENTER) }

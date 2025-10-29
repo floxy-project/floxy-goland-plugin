@@ -120,21 +120,39 @@ class FlowGraphValidator : ChainVisitor {
         if (node.stepName.isBlank()) {
             errors.add("Empty step name")
         }
+        // advance chain context similarly to builder
+        val full = context.getFullStepName(node.stepName)
+        context.lastStep = full
+        context.addBranchLastNode(full)
     }
 
     override fun visitOnFailure(node: ChainNode.OnFailureNode, context: VisitorContext) {
         if (context.lastStep == null) {
             errors.add("OnFailure '${node.stepName}' without preceding step")
         }
+        // does not change lastStep
     }
 
-    override fun visitSavePoint(node: ChainNode.SavePointNode, context: VisitorContext) {}
-    override fun visitWaitHumanConfirm(node: ChainNode.WaitHumanConfirmNode, context: VisitorContext) {}
+    override fun visitSavePoint(node: ChainNode.SavePointNode, context: VisitorContext) {
+        val full = context.getFullStepName(node.stepName)
+        context.lastStep = full
+        context.addBranchLastNode(full)
+    }
+    override fun visitWaitHumanConfirm(node: ChainNode.WaitHumanConfirmNode, context: VisitorContext) {
+        val full = context.getFullStepName(node.stepName)
+        context.lastStep = full
+        context.addBranchLastNode(full)
+    }
 
     override fun visitJoinStep(node: ChainNode.JoinStepNode, context: VisitorContext) {
         if (context.currentFork() == null) {
             errors.add("JoinStep '${node.stepName}' without active Fork")
         }
+        // close fork scope if any to mirror builder semantics
+        context.popFork()
+        val full = context.getFullStepName(node.stepName)
+        context.lastStep = full
+        context.addBranchLastNode(full)
     }
 
     override fun visitFork(node: ChainNode.ForkNode, context: VisitorContext) {
@@ -146,12 +164,20 @@ class FlowGraphValidator : ChainVisitor {
             errors.add("Fork nesting too deep (max 5): '${node.stepName}'")
         }
 
-        // Рекурсивно валидируем ветки
-        node.branches.forEach { branch ->
+        // open fork scope
+        context.pushFork(context.getFullStepName(node.stepName))
+
+        // Validate each branch with proper branch index-specific context
+        node.branches.forEachIndexed { idx, branch ->
+            val branchCtx = context.createBranchContext(idx + 1)
             branch.forEach { branchNode ->
-                accept(branchNode, context.createBranchContext(1), this)
+                accept(branchNode, branchCtx, this)
             }
+            branchCtx.lastStep?.let { context.addBranchLastNode(it) }
         }
+
+        // after fork, the logical last step is the fork head
+        context.lastStep = context.getFullStepName(node.stepName)
 
         forkDepth--
     }
@@ -160,6 +186,18 @@ class FlowGraphValidator : ChainVisitor {
         if (node.thenBranch.isEmpty() && node.elseBranch.isEmpty()) {
             errors.add("Condition '${node.stepName}' has no branches")
         }
+        // else branch processed using separate context similar to builder
+        if (node.elseBranch.isNotEmpty()) {
+            val elseCtx = VisitorContext(context.model, null, context.branchPrefix)
+            node.elseBranch.forEach { elseNode ->
+                accept(elseNode, elseCtx, this)
+            }
+            elseCtx.lastStep?.let { context.addBranchLastNode(it) }
+        }
+        // mark condition as the last in main chain so next is considered 'then'
+        val full = context.getFullStepName(node.stepName)
+        context.lastStep = full
+        context.addBranchLastNode(full)
     }
 
     private fun accept(node: ChainNode, context: VisitorContext, visitor: ChainVisitor) {

@@ -46,8 +46,8 @@
       <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ExportToMermaidAction"/>
     </action>
 
-<!--    <action id="com.floxy.viewer.ValidateFlowAction" class="com.floxy.viewer.actions.ValidateFlowAction" text="Validate Floxy Flow" description="Validate flow graph">-->
-<!--      <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ExportToImageAction"/>-->
-<!--    </action>-->
+    <action id="com.floxy.viewer.ValidateFlowAction" class="com.floxy.viewer.actions.ValidateFlowAction" text="Validate Floxy Flow" description="Validate flow graph">
+      <add-to-group group-id="com.floxy.viewer.Group" anchor="after" relative-to-action="com.floxy.viewer.ExportToImageAction"/>
+    </action>
   </actions>
 </idea-plugin>
