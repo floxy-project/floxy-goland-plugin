@@ -1,5 +1,10 @@
 name: Build & Release Floxy GoLand Plugin
 
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
 on:
   push:
     tags:
