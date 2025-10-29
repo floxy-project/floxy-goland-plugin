@@ -35,7 +35,8 @@ tasks {
     }
 
     runIde {
-        val macIdeContents = file("/Users/roman/Applications/GoLand.app/Contents")
+        val userHome = System.getProperty("user.home")
+        val macIdeContents = file("$userHome/Applications/GoLand.app/Contents")
         if (macIdeContents.exists()) {
             ideDir.set(macIdeContents)
         }
