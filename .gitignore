@@ -2,4 +2,3 @@ build/
 .idea/
 .vscode/
 .gradle/
-gradlew
