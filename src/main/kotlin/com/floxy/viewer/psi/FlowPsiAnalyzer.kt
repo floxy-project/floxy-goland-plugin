@@ -4,9 +4,6 @@ import com.floxy.viewer.model.*
 import com.goide.psi.GoFile
 import com.intellij.openapi.project.Project
 
-/**
- * AST-подобные узлы для представления цепочки вызовов
- */
 sealed class ChainNode {
     abstract val stepName: String
 
@@ -48,9 +45,6 @@ sealed class ChainNode {
     ) : ChainNode()
 }
 
-/**
- * Visitor интерфейс для обхода AST
- */
 interface ChainVisitor {
     fun visitStep(node: ChainNode.StepNode, context: VisitorContext)
     fun visitOnFailure(node: ChainNode.OnFailureNode, context: VisitorContext)
@@ -61,9 +55,6 @@ interface ChainVisitor {
     fun visitCondition(node: ChainNode.ConditionNode, context: VisitorContext)
 }
 
-/**
- * Контекст для visitor'а
- */
 class VisitorContext(
     val model: FlowModel,
     var lastStep: String? = null,
@@ -107,11 +98,6 @@ class VisitorContext(
     }
 }
 
-/**
- * Дополнительные visitor'ы для разных задач
- */
-
-// Валидатор структуры графа
 class FlowGraphValidator : ChainVisitor {
     val errors = mutableListOf<String>()
     private var forkDepth = 0
@@ -213,7 +199,6 @@ class FlowGraphValidator : ChainVisitor {
     }
 }
 
-// Статистика по графу
 class FlowStatisticsCollector : ChainVisitor {
     var totalSteps = 0
     var forkCount = 0
@@ -281,9 +266,6 @@ class FlowStatisticsCollector : ChainVisitor {
     """.trimIndent()
 }
 
-/**
- * Visitor для построения FlowModel из AST
- */
 class FlowModelBuilder : ChainVisitor {
 
     override fun visitStep(node: ChainNode.StepNode, context: VisitorContext) {
@@ -292,7 +274,6 @@ class FlowModelBuilder : ChainVisitor {
 
         context.lastStep?.let { last ->
             if (last != fullName) {
-                // Проверяем, является ли предыдущий шаг Condition
                 val prevStep = context.model.steps[last]
                 val edgeKind = if (prevStep?.type == FlowStepType.Condition) "then" else "next"
                 context.model.edges.add(FlowEdge(last, fullName, edgeKind))
@@ -310,8 +291,6 @@ class FlowModelBuilder : ChainVisitor {
         context.lastStep?.let { last ->
             context.model.edges.add(FlowEdge(last, fullName, "onFailure"))
         }
-
-        // OnFailure не меняет lastStep для основной цепочки
     }
 
     override fun visitSavePoint(node: ChainNode.SavePointNode, context: VisitorContext) {
@@ -352,7 +331,6 @@ class FlowModelBuilder : ChainVisitor {
             joinQuorum = node.quorum
         )
 
-        // Соединяем все последние ноды из веток Fork с Join
         val forkContext = context.popFork()
         forkContext?.branchLastNodes?.forEach { branchLastNode ->
             context.model.edges.add(FlowEdge(branchLastNode, fullName, "join"))
@@ -360,7 +338,6 @@ class FlowModelBuilder : ChainVisitor {
 
         context.lastStep?.let { last ->
             if (last != fullName && forkContext == null) {
-                // Если нет активного Fork, соединяем с предыдущим шагом
                 context.model.edges.add(FlowEdge(last, fullName, "next"))
             }
         }
@@ -372,7 +349,6 @@ class FlowModelBuilder : ChainVisitor {
     override fun visitFork(node: ChainNode.ForkNode, context: VisitorContext) {
         val fullName = context.getFullStepName(node.stepName)
 
-        // Извлекаем имена шагов из веток для parallelBranches
         val parallelBranches = node.branches.map { branch ->
             branch.map { it.stepName }
         }
@@ -390,25 +366,20 @@ class FlowModelBuilder : ChainVisitor {
             }
         }
 
-        // Создаем контекст для Fork
         context.pushFork(fullName)
 
-        // Обрабатываем каждую ветку
         node.branches.forEachIndexed { branchIndex, branchNodes ->
             val branchContext = context.createBranchContext(branchIndex + 1)
 
-            // Соединяем Fork с первым шагом ветки
             if (branchNodes.isNotEmpty()) {
                 val firstStepName = branchContext.getFullStepName(branchNodes.first().stepName)
                 context.model.edges.add(FlowEdge(fullName, firstStepName, "split"))
             }
 
-            // Обходим все узлы ветки
             branchNodes.forEach { branchNode ->
                 accept(branchNode, branchContext, this)
             }
-            
-            // Добавляем последний шаг ветки в контекст Fork
+
             branchContext.lastStep?.let { context.addBranchLastNode(it) }
         }
 
@@ -425,25 +396,21 @@ class FlowModelBuilder : ChainVisitor {
             }
         }
 
-        // Обрабатываем else ветку (из func внутри Condition)
         if (node.elseBranch.isNotEmpty()) {
             val elseContext = VisitorContext(context.model, null, context.branchPrefix)
             
             node.elseBranch.forEachIndexed { index, elseNode ->
                 if (index == 0) {
-                    // Первый шаг в else ветке - соединяем с Condition
                     val elseStepName = elseContext.getFullStepName(elseNode.stepName)
                     context.model.edges.add(FlowEdge(fullName, elseStepName, "else"))
                 }
                     
                 accept(elseNode, elseContext, this)
             }
-                
-            // Запоминаем последний шаг else-ветки для возможного соединения
+
             elseContext.lastStep?.let { context.addBranchLastNode(it) }
         }
 
-        // Устанавливаем специальный флаг, что следующий шаг должен быть соединён как "then"
         context.lastStep = fullName
         context.addBranchLastNode(fullName)
     }
@@ -461,9 +428,6 @@ class FlowModelBuilder : ChainVisitor {
     }
 }
 
-/**
- * Парсер, который строит AST из текста
- */
 class ChainParser {
 
     fun parse(chainText: String): List<ChainNode> {
@@ -593,7 +557,6 @@ class ChainParser {
     }
 
     private fun extractElseBranch(conditionCallText: String): List<ChainNode> {
-        // Ищем func( внутри вызова Condition - это else-ветка
         var i = 0
         while (i < conditionCallText.length) {
             val funcStart = conditionCallText.indexOf("func(", i)
@@ -700,32 +663,20 @@ class ChainParser {
     }
 }
 
-/**
- * Результат анализа графа
- */
 data class FlowAnalysisResult(
     val model: FlowModel,
     val errors: List<String>,
     val statistics: String
 )
 
-/**
- * Главный анализатор с использованием Visitor pattern
- */
 class VisitorBasedFlowAnalyzer {
 
     private val parser = ChainParser()
 
-    /**
-     * Простой метод - только построение модели
-     */
     fun collectFlowsFromText(fileText: String): List<FlowModel> {
         return analyzeFlowsDetailed(fileText).map { it.model }
     }
 
-    /**
-     * Полный анализ с валидацией и статистикой
-     */
     fun analyzeFlowsDetailed(fileText: String): List<FlowAnalysisResult> {
         val results = mutableListOf<FlowAnalysisResult>()
         val buildPattern = Regex("""\.\s*Build\(\)""", setOf(RegexOption.DOT_MATCHES_ALL))
@@ -764,19 +715,16 @@ class VisitorBasedFlowAnalyzer {
                     val context = VisitorContext(model)
                     val builder = FlowModelBuilder()
 
-                    // Обходим AST с помощью visitor
                     ast.forEach { node ->
                         accept(node, context, builder)
                     }
 
-                    // Валидация
                     val validator = FlowGraphValidator()
                     val validationContext = VisitorContext(model)
                     ast.forEach { node ->
                         accept(node, validationContext, validator)
                     }
 
-                    // Статистика
                     val statsCollector = FlowStatisticsCollector()
                     val statsContext = VisitorContext(model)
                     ast.forEach { node ->
@@ -837,6 +785,7 @@ class VisitorBasedFlowAnalyzer {
             }
             i++
         }
+
         return -1
     }
 }
