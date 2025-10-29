@@ -97,4 +97,52 @@ class ValidatorTest {
             "Expected ERROR about multiple onFailure targets"
         )
     }
+
+    @Test
+    fun `complex validator test`() {
+        val code = """
+            package main
+            import "github.com/rom8726/floxy"
+            func main() {
+                workflowDef, err := floxy.NewBuilder("microservices-orchestration", 1).
+                    Step("validate-user", "user-service", floxy.WithStepMaxRetries(3)).
+                    OnFailure("compensate-user-validation", "compensation",
+                        floxy.WithStepMaxRetries(1),
+                        floxy.WithStepMetadata(map[string]any{
+                            "action": "user_validation_failed",
+                            "reason": "user_validation_error",
+                        })).
+                    Fork("process-payment-and-inventory",
+                        func(branch *floxy.Builder) {
+                            branch.Step("process-payment", "payment-service", floxy.WithStepMaxRetries(3))
+                        },
+                        func(branch *floxy.Builder) {
+                            branch.Step("check-inventory", "inventory-service", floxy.WithStepMaxRetries(2))
+                        },
+                    ).
+                    JoinStep("send-notifications", []string{"process-payment", "check-inventory"}, floxy.JoinStrategyAll).
+                    Fork("track-analytics",
+                        func(branch *floxy.Builder) {
+                            branch.Step("track-event", "analytics-service", floxy.WithStepMaxRetries(1))
+                        },
+                        func(branch *floxy.Builder) {
+                            branch.Step("audit-action", "audit-service", floxy.WithStepMaxRetries(1))
+                        },
+                    ).
+                    JoinStep("finalize-order", []string{"track-event", "audit-action"}, floxy.JoinStrategyAll).
+                    Build()
+            }
+        """.trimIndent()
+
+        val analyzer = VisitorBasedFlowAnalyzer()
+        val flows = analyzer.collectFlowsFromText(code)
+        assertEquals(1, flows.size)
+        val model = flows[0]
+
+        val issues = Validator().validate(model)
+        assertFalse(
+            issues.any(),
+            "unexpected issues"
+        )
+    }
 }
