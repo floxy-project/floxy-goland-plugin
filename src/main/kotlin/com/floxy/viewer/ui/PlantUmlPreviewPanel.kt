@@ -61,9 +61,13 @@ class PlantUmlPreviewPanel(private val project: Project) : JPanel(BorderLayout()
                             // Publish selection for sync with Flows tab
                             project.messageBus.syncPublisher(FlowModelService.SELECTION_TOPIC)
                                 .onStepSelected(FlowModelService.SelectionEvent(file, step.name))
-                            val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@addActionListener
-                            val fn = GoHandlerNavigator.findFunctionInFile(psiFile, handler)
-                            GoHandlerNavigator.navigateTo(fn)
+                            val target = ApplicationManager.getApplication().runReadAction<com.intellij.psi.PsiElement?> {
+                                val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction null
+                                // First, try to locate a method Name() that returns the handler string literal
+                                GoHandlerNavigator.findHandlerImplementation(psiFile, handler)
+                                    ?: GoHandlerNavigator.findFunctionInFile(psiFile, handler)
+                            }
+                            GoHandlerNavigator.navigateTo(target)
                         }
                         nav.add(item)
                         added++
