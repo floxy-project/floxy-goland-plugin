@@ -99,6 +99,36 @@ class VisitorContext(
 }
 
 class FlowGraphValidator : ChainVisitor {
+    fun postValidate(model: FlowModel) {
+        // Detect cycles in the directed graph built in model.edges (consider all edge kinds)
+        val adj = model.edges.groupBy({ it.from }, { it.to })
+        val visited = mutableSetOf<String>()
+        val stack = ArrayDeque<String>()
+        val onStack = mutableSetOf<String>()
+        var cycleReported = false
+        fun dfs(u: String) {
+            if (cycleReported) return
+            if (!visited.add(u)) return
+            stack.addLast(u)
+            onStack.add(u)
+            adj[u]?.forEach { v ->
+                if (cycleReported) return
+                if (v in onStack) {
+                    // Build cycle path
+                    val cycleStartIdx = stack.indexOf(v)
+                    val cyclePath = (cycleStartIdx until stack.size).map { stack.elementAt(it) } + v
+                    errors.add("Cycle detected: " + cyclePath.joinToString(" -> "))
+                    cycleReported = true
+                    return
+                }
+                if (v !in visited) dfs(v)
+            }
+            onStack.remove(u)
+            if (stack.isNotEmpty()) stack.removeLast()
+        }
+        // Launch DFS from all nodes to be safe
+        model.steps.keys.forEach { if (!cycleReported) dfs(it) }
+    }
     val errors = mutableListOf<String>()
     private var forkDepth = 0
 
@@ -724,6 +754,8 @@ class VisitorBasedFlowAnalyzer {
                     ast.forEach { node ->
                         accept(node, validationContext, validator)
                     }
+                    // Post validation on built model (e.g., cycle detection)
+                    validator.postValidate(model)
 
                     val statsCollector = FlowStatisticsCollector()
                     val statsContext = VisitorContext(model)
