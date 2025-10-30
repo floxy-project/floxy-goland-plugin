@@ -48,8 +48,17 @@ class PlantUmlRenderer {
                 step.name
             }
             
-            // PlantUML allows per-component color via trailing #color
-            sb.appendLine("component \"$displayName$extras\" as ${alias(step.name)} <<$stereotype>> $color")
+            // Choose shape by type and render with color
+            val shape = when (step.type) {
+                FlowStepType.Task -> "rectangle"
+                FlowStepType.Fork -> "folder"
+                FlowStepType.Join -> "node"
+                FlowStepType.SavePoint -> "database"
+                FlowStepType.Condition -> "cloud"
+                FlowStepType.Human -> "actor"
+                FlowStepType.Parallel -> "package"
+            }
+            sb.appendLine("$shape \"$displayName$extras\" as ${alias(step.name)} <<$stereotype>> $color")
         }
         
         // Edges

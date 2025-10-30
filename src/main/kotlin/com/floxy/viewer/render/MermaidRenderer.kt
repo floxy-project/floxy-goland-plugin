@@ -42,7 +42,18 @@ class MermaidRenderer {
 
             val displayName = if (step.name.contains("_branch_")) step.name.substringBefore("_branch_") else step.name
             val id = alias(step.name)
-            sb.appendLine("$id[\"$displayName$extras\"]")
+            // Choose shape by type
+            val nodeText = "$displayName$extras"
+            val shaped = when (step.type) {
+                FlowStepType.Task -> "[\"$nodeText\"]"            // rectangle
+                FlowStepType.Fork -> "[[\"$nodeText\"]]"          // subroutine-like
+                FlowStepType.Join -> "((\"$nodeText\"))"          // circle
+                FlowStepType.SavePoint -> "([\"$nodeText\"])"     // stadium
+                FlowStepType.Condition -> "{\"$nodeText\"}"       // diamond/decision
+                FlowStepType.Human -> "(\"$nodeText\")"           // rounded
+                FlowStepType.Parallel -> "[[\"$nodeText\"]]"      // same as Fork
+            }
+            sb.appendLine("$id$shaped")
             // Color by type using per-node style
             val fill = when (step.type) {
                 FlowStepType.Task -> "#E3F2FD"
