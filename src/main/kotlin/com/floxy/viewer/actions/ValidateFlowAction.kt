@@ -19,7 +19,7 @@ class ValidateFlowAction : AnAction(), DumbAware {
         }
         val analyzer = VisitorBasedFlowAnalyzer()
         val results = ApplicationManager.getApplication().runReadAction<List<com.floxy.viewer.psi.FlowAnalysisResult>> {
-            analyzer.analyzeFlowsDetailed(psi.text)
+            analyzer.analyzeFlowsDetailed(psi)
         }
         if (results.isEmpty()) {
             Messages.showInfoMessage(project, "No floxy.NewBuilder flows found in file", "Floxy Viewer")
