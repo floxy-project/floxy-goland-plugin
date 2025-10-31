@@ -23,7 +23,7 @@ It helps developers and architects better understand workflow logic, branching, 
 - Automatically refreshes the diagram when the workflow source changes.
 - Highlights compensation relationships and failure-handling paths.
 
-<img src="docs/floxy-gloand-plugin.png" width="800">
+<img src="docs/floxy-goland-plugin.png" width="800">
 
 ---
 
