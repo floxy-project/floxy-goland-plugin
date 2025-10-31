@@ -43,7 +43,7 @@ class ValidationPanel(private val project: Project) : JPanel(BorderLayout()) {
             val file = editor.file ?: return@runReadAction emptyList()
             val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
             val analyzer = VisitorBasedFlowAnalyzer()
-            val results = analyzer.analyzeFlowsDetailed(psiFile.text)
+            val results = analyzer.analyzeFlowsDetailed(psiFile)
             if (results.isEmpty()) {
                 return@runReadAction listOf("No floxy.NewBuilder flows found in file")
             }

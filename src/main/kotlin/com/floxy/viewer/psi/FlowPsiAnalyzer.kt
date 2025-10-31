@@ -3,7 +3,6 @@ package com.floxy.viewer.psi
 import com.floxy.viewer.model.*
 import com.goide.psi.GoCallExpr
 import com.goide.psi.GoFile
-import com.intellij.openapi.project.Project
 import com.intellij.psi.util.PsiTreeUtil
 
 sealed class ChainNode {
@@ -776,88 +775,12 @@ class VisitorBasedFlowAnalyzer {
 
     private val parser = ChainParser()
 
-    fun collectFlowsFromText(fileText: String): List<FlowModel> {
-        return analyzeFlowsDetailed(fileText).map { it.model }
-    }
 
     // New PSI-based entry point
     fun collectFlowsFromPsi(goFile: GoFile): List<FlowModel> {
         return analyzeFlowsDetailed(goFile).map { it.model }
     }
 
-    fun analyzeFlowsDetailed(fileText: String): List<FlowAnalysisResult> {
-        val results = mutableListOf<FlowAnalysisResult>()
-        val buildPattern = Regex("""\.\s*Build\(\)""", setOf(RegexOption.DOT_MATCHES_ALL))
-
-        var startIndex = 0
-        while (true) {
-            val nb = fileText.indexOf("NewBuilder(", startIndex)
-            val nbt = fileText.indexOf("NewBuidler(", startIndex)
-            val openIdx = when {
-                nb == -1 && nbt == -1 -> break
-                nb == -1 -> nbt
-                nbt == -1 -> nb
-                else -> minOf(nb, nbt)
-            }
-            val isTypo = fileText.startsWith("NewBuidler(", openIdx)
-            val nameToken = if (isTypo) "NewBuidler" else "NewBuilder"
-            val openParenIdx = openIdx + nameToken.length
-            val closeIdx = findMatchingParen(fileText, openParenIdx)
-            if (closeIdx == -1) break
-            val args = fileText.substring(openParenIdx + 1, closeIdx)
-
-            val nameMatch = Regex("([\"`])(.+?)\\1", setOf(RegexOption.DOT_MATCHES_ALL)).find(args)
-            val name = nameMatch?.groupValues?.getOrNull(2) ?: run { startIndex = closeIdx + 1; continue }
-
-            val afterNameIndex = nameMatch.range.last + 1
-            val versionMatch = Regex("\\b(\\d+)\\b").find(args, afterNameIndex)
-            val version = versionMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
-
-            val build = buildPattern.find(fileText, closeIdx)
-            if (build != null) {
-                val chainText = fileText.substring(closeIdx + 1, build.range.first)
-                val ast = parser.parse(chainText)
-
-                if (ast.isNotEmpty()) {
-                    val model = FlowModel(name = name, version = version)
-                    val context = VisitorContext(model)
-                    val builder = FlowModelBuilder()
-
-                    ast.forEach { node ->
-                        accept(node, context, builder)
-                    }
-
-                    val validator = FlowGraphValidator()
-                    val validationContext = VisitorContext(model)
-                    ast.forEach { node ->
-                        accept(node, validationContext, validator)
-                    }
-                    // Post validation on built model (e.g., cycle detection)
-                    validator.postValidate(model)
-
-                    val statsCollector = FlowStatisticsCollector()
-                    val statsContext = VisitorContext(model)
-                    ast.forEach { node ->
-                        accept(node, statsContext, statsCollector)
-                    }
-
-                    results.add(
-                        FlowAnalysisResult(
-                            model = model,
-                            errors = validator.errors,
-                            statistics = statsCollector.toString()
-                        )
-                    )
-                }
-
-                startIndex = build.range.last + 1
-            } else {
-                startIndex = closeIdx + 1
-            }
-        }
-
-        return results
-    }
 
     // PSI-based analysis using Go plugin PSI
     fun analyzeFlowsDetailed(goFile: GoFile): List<FlowAnalysisResult> {
