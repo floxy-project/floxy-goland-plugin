@@ -509,7 +509,60 @@ class ChainParser {
             return res
         }
 
-        val methodNamePattern = Regex("""\A\.[\s]*(Step|Then|OnFailure|SavePoint|WaitHumanConfirm|JoinStep|Fork|Condition)[\s]*\(""")
+        fun extractIdentifierAfterString(args: String, stringIndex: Int): String? {
+            var i = 0
+            var seen = 0
+            // scan to end of Nth string literal (1-based index)
+            while (i < args.length && seen < stringIndex) {
+                while (i < args.length && args[i].isWhitespace()) i++
+                if (i >= args.length) return null
+                val c = args[i]
+                if (c == '"' || c == '`') {
+                    val quote = c
+                    i++
+                    while (i < args.length) {
+                        val ch = args[i]
+                        if (ch == quote) { i++; break }
+                        if (quote == '"' && ch == '\\' && i + 1 < args.length) {
+                            i += 2
+                        } else {
+                            i++
+                        }
+                    }
+                    // skip to next comma after the string
+                    while (i < args.length && args[i] != ',') i++
+                    if (i < args.length && args[i] == ',') i++
+                    seen++
+                } else {
+                    // skip non-string argument (like slice literal) up to comma balancing nested braces/parens
+                    var depth = 0
+                    while (i < args.length) {
+                        val ch = args[i]
+                        if (ch == '(' || ch == '[' || ch == '{') depth++
+                        else if (ch == ')' || ch == ']' || ch == '}') { if (depth == 0) break; depth-- }
+                        else if (depth == 0 && ch == ',') { i++; break }
+                        i++
+                    }
+                }
+            }
+            // Now skip whitespace and commas
+            while (i < args.length && (args[i].isWhitespace() || args[i] == ',')) i++
+            if (i >= args.length) return null
+            // collect identifier token possibly with dot-qualified package
+            val start = i
+            while (i < args.length) {
+                val ch = args[i]
+                if (ch.isLetterOrDigit() || ch == '_' || ch == '.') {
+                    i++
+                } else {
+                    break
+                }
+            }
+            val token = args.substring(start, i).trim()
+            return if (token.isNotEmpty()) token else null
+        }
+
+        val methodNamePattern = Regex("""\A\.[\s]*(Step|Then|OnFailure|SavePoint|WaitHumanConfirm|JoinStep|Join|Fork|ForkJoin|Condition)[\s]*\(""")
 
         var i = 0
         while (i < chainText.length) {
@@ -557,8 +610,16 @@ class ChainParser {
                     val args = extractArgs(callText)
                     val strs = extractStrings(args, 1)
                     if (strs.isNotEmpty()) {
-                        // TODO: извлечь strategy и quorum из аргументов
-                        nodes.add(ChainNode.JoinStepNode(strs[0], emptyList()))
+                        val strategy = extractIdentifierAfterString(args, 1)
+                        nodes.add(ChainNode.JoinStepNode(strs[0], emptyList(), strategy))
+                    }
+                }
+                "Join" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 1)
+                    if (strs.isNotEmpty()) {
+                        val strategy = extractIdentifierAfterString(args, 1)
+                        nodes.add(ChainNode.JoinStepNode(strs[0], emptyList(), strategy))
                     }
                 }
                 "Fork" -> {
@@ -567,6 +628,16 @@ class ChainParser {
                     if (strs.isNotEmpty()) {
                         val branches = extractBranches(callText)
                         nodes.add(ChainNode.ForkNode(strs[0], branches))
+                    }
+                }
+                "ForkJoin" -> {
+                    val args = extractArgs(callText)
+                    val strs = extractStrings(args, 2)
+                    if (strs.size >= 2) {
+                        val branches = extractBranchesFromForkJoin(callText)
+                        nodes.add(ChainNode.ForkNode(strs[0], branches))
+                        val strategy = extractIdentifierAfterString(args, 2)
+                        nodes.add(ChainNode.JoinStepNode(strs[1], emptyList(), strategy))
                     }
                 }
                 "Condition" -> {
@@ -820,4 +891,84 @@ class VisitorBasedFlowAnalyzer {
 
         return -1
     }
+}
+
+
+// Helper for parsing ForkJoin slice argument into branch node lists.
+private fun extractBranchesFromForkJoin(callText: String): List<List<ChainNode>> {
+    fun findMatchingBrace(text: String, openIdx: Int): Int {
+        var i = openIdx
+        var depth = 0
+        var inString: Char? = null
+        while (i < text.length) {
+            val c = text[i]
+            if (inString != null) {
+                if (c == inString) {
+                    inString = null
+                } else if (c == '\\' && inString == '"' && i + 1 < text.length) {
+                    i++
+                }
+            } else {
+                if (c == '"' || c == '`') {
+                    inString = c
+                } else if (c == '{') {
+                    depth++
+                } else if (c == '}') {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return -1
+    }
+
+    // Locate the slice/composite literal of type []func(...){ ... }
+    val sliceIdx = callText.indexOf("[]func")
+    if (sliceIdx == -1) {
+        // Fallback to generic branch extractor (will scan for func bodies anywhere)
+        val parser = ChainParser()
+        return parser.run {
+            // Reuse existing method via substring of the whole call
+            // Use the existing extractBranches by creating a faux fork call text
+            // However, since it's private in class, replicate minimal behavior here.
+            val branches = mutableListOf<List<ChainNode>>()
+            var i = 0
+            while (i < callText.length) {
+                val funcStart = callText.indexOf("func(", i)
+                if (funcStart == -1) break
+                val openBrace = callText.indexOf('{', funcStart)
+                if (openBrace == -1) break
+                val closeBrace = findMatchingBrace(callText, openBrace)
+                if (closeBrace == -1) break
+                val branchContent = callText.substring(openBrace + 1, closeBrace)
+                val branchNodes = parse(branchContent)
+                if (branchNodes.isNotEmpty()) branches.add(branchNodes)
+                i = closeBrace + 1
+            }
+            branches
+        }
+    }
+    val openBrace = callText.indexOf('{', sliceIdx)
+    if (openBrace == -1) return emptyList()
+    val closeBrace = findMatchingBrace(callText, openBrace)
+    if (closeBrace == -1) return emptyList()
+    val inner = callText.substring(openBrace + 1, closeBrace)
+
+    val branches = mutableListOf<List<ChainNode>>()
+    var i = 0
+    val parser = ChainParser()
+    while (i < inner.length) {
+        val funcStart = inner.indexOf("func(", i)
+        if (funcStart == -1) break
+        val bodyOpen = inner.indexOf('{', funcStart)
+        if (bodyOpen == -1) break
+        val bodyClose = findMatchingBrace(inner, bodyOpen)
+        if (bodyClose == -1) break
+        val branchContent = inner.substring(bodyOpen + 1, bodyClose)
+        val branchNodes = parser.parse(branchContent)
+        if (branchNodes.isNotEmpty()) branches.add(branchNodes)
+        i = bodyClose + 1
+    }
+    return branches
 }
