@@ -68,7 +68,7 @@ class FlowModelService(private val project: Project) : Disposable {
         val models = ApplicationManager.getApplication().runReadAction<List<FlowModel>> {
             if (project.isDisposed || !file.isValid) return@runReadAction emptyList()
             val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
-            analyzer.collectFlowsFromText(psiFile.text)
+            analyzer.collectFlowsFromPsi(psiFile)
         }
         // If file became invalid during computation, avoid touching cache or publishing
         if (!file.isValid || project.isDisposed) return
@@ -83,7 +83,7 @@ class FlowModelService(private val project: Project) : Disposable {
                 if (project.isDisposed || !file.isValid) return@runReadAction emptyList()
                 val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction emptyList()
                 val analyzer = VisitorBasedFlowAnalyzer()
-                val models = analyzer.collectFlowsFromText(psiFile.text)
+                val models = analyzer.collectFlowsFromPsi(psiFile)
                 if (file.isValid && !project.isDisposed) {
                     cache[file] = models
                 }

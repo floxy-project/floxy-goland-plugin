@@ -1,8 +1,10 @@
 package com.floxy.viewer.psi
 
 import com.floxy.viewer.model.*
+import com.goide.psi.GoCallExpr
 import com.goide.psi.GoFile
 import com.intellij.openapi.project.Project
+import com.intellij.psi.util.PsiTreeUtil
 
 sealed class ChainNode {
     abstract val stepName: String
@@ -778,6 +780,11 @@ class VisitorBasedFlowAnalyzer {
         return analyzeFlowsDetailed(fileText).map { it.model }
     }
 
+    // New PSI-based entry point
+    fun collectFlowsFromPsi(goFile: GoFile): List<FlowModel> {
+        return analyzeFlowsDetailed(goFile).map { it.model }
+    }
+
     fun analyzeFlowsDetailed(fileText: String): List<FlowAnalysisResult> {
         val results = mutableListOf<FlowAnalysisResult>()
         val buildPattern = Regex("""\.\s*Build\(\)""", setOf(RegexOption.DOT_MATCHES_ALL))
@@ -849,6 +856,63 @@ class VisitorBasedFlowAnalyzer {
             }
         }
 
+        return results
+    }
+
+    // PSI-based analysis using Go plugin PSI
+    fun analyzeFlowsDetailed(goFile: GoFile): List<FlowAnalysisResult> {
+        val results = mutableListOf<FlowAnalysisResult>()
+        val calls = PsiTreeUtil.findChildrenOfType(goFile, GoCallExpr::class.java)
+        for (call in calls) {
+            val text = call.text
+            if (!text.contains("Build(") || !text.contains("NewBuilder(") && !text.contains("NewBuidler(")) continue
+            // Heuristic: process this chain same as in text-based analyzer using the call text
+            // Find NewBuilder and Build in this text
+            val nb = text.indexOf("NewBuilder(")
+            val nbt = text.indexOf("NewBuidler(")
+            val openIdx = when {
+                nb == -1 && nbt == -1 -> -1
+                nb == -1 -> nbt
+                nbt == -1 -> nb
+                else -> minOf(nb, nbt)
+            }
+            if (openIdx == -1) continue
+            val isTypo = text.startsWith("NewBuidler(", openIdx)
+            val nameToken = if (isTypo) "NewBuidler" else "NewBuilder"
+            val openParenIdx = openIdx + nameToken.length
+            val closeIdx = findMatchingParen(text, openParenIdx)
+            if (closeIdx == -1) continue
+            val args = text.substring(openParenIdx + 1, closeIdx)
+
+            val nameMatch = Regex("([\"`])(.+?)\\1", setOf(RegexOption.DOT_MATCHES_ALL)).find(args)
+            val name = nameMatch?.groupValues?.getOrNull(2) ?: continue
+            val afterNameIndex = nameMatch.range.last + 1
+            val versionMatch = Regex("\\b(\\d+)\\b").find(args, afterNameIndex)
+            val version = versionMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+
+            // Build() should be in the call chain; take substring from after closeIdx to right before the first .Build()
+            val buildIdx = text.indexOf(".Build()", closeIdx)
+            if (buildIdx == -1) continue
+            val chainText = text.substring(closeIdx + 1, buildIdx)
+            val ast = parser.parse(chainText)
+            if (ast.isEmpty()) continue
+
+            val model = FlowModel(name = name, version = version)
+            val builder = FlowModelBuilder()
+            val context = VisitorContext(model)
+            ast.forEach { node -> accept(node, context, builder) }
+
+            val validator = FlowGraphValidator()
+            val vctx = VisitorContext(model)
+            ast.forEach { node -> accept(node, vctx, validator) }
+            validator.postValidate(model)
+
+            val statsCollector = FlowStatisticsCollector()
+            val sctx = VisitorContext(model)
+            ast.forEach { node -> accept(node, sctx, statsCollector) }
+
+            results.add(FlowAnalysisResult(model, validator.errors, statsCollector.toString()))
+        }
         return results
     }
 
