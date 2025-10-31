@@ -862,38 +862,46 @@ class VisitorBasedFlowAnalyzer {
     // PSI-based analysis using Go plugin PSI
     fun analyzeFlowsDetailed(goFile: GoFile): List<FlowAnalysisResult> {
         val results = mutableListOf<FlowAnalysisResult>()
+        val fileText = goFile.text
         val calls = PsiTreeUtil.findChildrenOfType(goFile, GoCallExpr::class.java)
         for (call in calls) {
-            val text = call.text
-            if (!text.contains("Build(") || !text.contains("NewBuilder(") && !text.contains("NewBuidler(")) continue
-            // Heuristic: process this chain same as in text-based analyzer using the call text
-            // Find NewBuilder and Build in this text
-            val nb = text.indexOf("NewBuilder(")
-            val nbt = text.indexOf("NewBuidler(")
-            val openIdx = when {
-                nb == -1 && nbt == -1 -> -1
-                nb == -1 -> nbt
-                nbt == -1 -> nb
-                else -> minOf(nb, nbt)
+            val callText = call.text
+            // We only require NewBuilder to be inside this call; Build() may be a separate PSI node
+            val nbLocal = callText.indexOf("NewBuilder(")
+            val nbtLocal = callText.indexOf("NewBuidler(")
+            val localIdx = when {
+                nbLocal == -1 && nbtLocal == -1 -> -1
+                nbLocal == -1 -> nbtLocal
+                nbtLocal == -1 -> nbLocal
+                else -> minOf(nbLocal, nbtLocal)
             }
-            if (openIdx == -1) continue
-            val isTypo = text.startsWith("NewBuidler(", openIdx)
-            val nameToken = if (isTypo) "NewBuidler" else "NewBuilder"
-            val openParenIdx = openIdx + nameToken.length
-            val closeIdx = findMatchingParen(text, openParenIdx)
-            if (closeIdx == -1) continue
-            val args = text.substring(openParenIdx + 1, closeIdx)
+            if (localIdx == -1) continue
 
+            val isTypo = callText.startsWith("NewBuidler(", localIdx)
+            val nameToken = if (isTypo) "NewBuidler" else "NewBuilder"
+
+            // Absolute offsets in the file text
+            val callStart = call.textRange.startOffset
+            val openParenAbs = callStart + localIdx + nameToken.length
+
+            // Find closing parenthesis of NewBuilder(...) in the file text
+            val closeParenAbs = findMatchingParen(fileText, openParenAbs)
+            if (closeParenAbs == -1) continue
+
+            val args = fileText.substring(openParenAbs + 1, closeParenAbs)
             val nameMatch = Regex("([\"`])(.+?)\\1", setOf(RegexOption.DOT_MATCHES_ALL)).find(args)
             val name = nameMatch?.groupValues?.getOrNull(2) ?: continue
             val afterNameIndex = nameMatch.range.last + 1
             val versionMatch = Regex("\\b(\\d+)\\b").find(args, afterNameIndex)
             val version = versionMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
 
-            // Build() should be in the call chain; take substring from after closeIdx to right before the first .Build()
-            val buildIdx = text.indexOf(".Build()", closeIdx)
-            if (buildIdx == -1) continue
-            val chainText = text.substring(closeIdx + 1, buildIdx)
+            // Find the nearest .Build() (allowing whitespace/newline after the dot) following the NewBuilder(...) close paren
+            val buildMatch = Regex("""\.\s*Build\(\)""", setOf(RegexOption.DOT_MATCHES_ALL)).find(fileText, closeParenAbs)
+            if (buildMatch == null) continue
+            val buildIdxAbs = buildMatch.range.first
+
+            // Build the chain substring between NewBuilder(...) and .Build()
+            val chainText = fileText.substring(closeParenAbs + 1, buildIdxAbs)
             val ast = parser.parse(chainText)
             if (ast.isEmpty()) continue
 
