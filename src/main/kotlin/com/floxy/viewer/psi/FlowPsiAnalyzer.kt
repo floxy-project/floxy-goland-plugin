@@ -864,6 +864,7 @@ class VisitorBasedFlowAnalyzer {
         val results = mutableListOf<FlowAnalysisResult>()
         val fileText = goFile.text
         val calls = PsiTreeUtil.findChildrenOfType(goFile, GoCallExpr::class.java)
+        val processed = mutableSetOf<Pair<Int, Int>>()
         for (call in calls) {
             val callText = call.text
             // We only require NewBuilder to be inside this call; Build() may be a separate PSI node
@@ -899,6 +900,10 @@ class VisitorBasedFlowAnalyzer {
             val buildMatch = Regex("""\.\s*Build\(\)""", setOf(RegexOption.DOT_MATCHES_ALL)).find(fileText, closeParenAbs)
             if (buildMatch == null) continue
             val buildIdxAbs = buildMatch.range.first
+
+            // Skip duplicates: multiple GoCallExpr in the same chain may point to the same [NewBuilder(...), Build()] range
+            val key = Pair(openParenAbs, buildIdxAbs)
+            if (!processed.add(key)) continue
 
             // Build the chain substring between NewBuilder(...) and .Build()
             val chainText = fileText.substring(closeParenAbs + 1, buildIdxAbs)
