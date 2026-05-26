@@ -62,7 +62,7 @@ class FloxyToolWindowFactory : ToolWindowFactory, DumbAware {
             stepsListModel.clear()
             val editor = FileEditorManager.getInstance(project).selectedEditor
             val file = editor?.file ?: return
-            val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return
+            if (file.extension != "go") return
             val models = project.getService(FlowModelService::class.java).collectFromFile(file)
             models.forEach { flowsListModel.addElement(it) }
         }
@@ -109,8 +109,10 @@ class FloxyToolWindowFactory : ToolWindowFactory, DumbAware {
             val handler = flow.steps[stepName]?.handler ?: return@addListSelectionListener
             val editor = FileEditorManager.getInstance(project).selectedEditor
             val file = editor?.file ?: return@addListSelectionListener
-            val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@addListSelectionListener
-            val fn = GoHandlerNavigator.findFunctionInFile(psiFile, handler) ?: return@addListSelectionListener
+            val fn = ApplicationManager.getApplication().runReadAction<com.intellij.psi.PsiElement?> {
+                val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return@runReadAction null
+                GoHandlerNavigator.findFunctionInFile(psiFile, handler)
+            } ?: return@addListSelectionListener
             GoHandlerNavigator.navigateTo(fn)
         }
 

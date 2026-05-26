@@ -10,24 +10,29 @@ if (isTestTask) {
 }
 
 group = "com.floxy"
-version = "0.1.0"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
 intellij {
-    // GoLand 2025.2
+    // GoLand 2026.1
     type.set("GO")
-    version.set("2025.2")
+    version.set("2026.1.2")
 
     plugins.set(listOf("org.jetbrains.plugins.go"))
 }
 
 tasks {
     patchPluginXml {
-        sinceBuild.set("252.0")
-        untilBuild.set("253.*")
+        sinceBuild.set("261.0")
+        untilBuild.set("261.*")
     }
 
     buildPlugin {
@@ -48,6 +53,18 @@ tasks {
 
     test {
         useJUnitPlatform()
+    }
+
+    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+afterEvaluate {
+    tasks.withType<Test>().configureEach {
+        jvmArgumentProviders.clear()
+        systemProperties.remove("java.system.class.loader")
+        jvmArgs("--add-exports=java.base/sun.nio.fs=ALL-UNNAMED")
     }
 }
 
