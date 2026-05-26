@@ -2,7 +2,6 @@ package com.floxy.viewer.actions
 
 import com.floxy.viewer.render.MermaidRenderer
 import com.floxy.viewer.services.FlowModelService
-import com.goide.psi.GoFile
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -17,8 +16,7 @@ class ExportToMermaidAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val vFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
-        val psi = e.getData(CommonDataKeys.PSI_FILE) as? GoFile
-        if (psi == null) {
+        if (vFile.extension != "go") {
             Messages.showInfoMessage(project, "Not a Go file", "Floxy Viewer")
             return
         }

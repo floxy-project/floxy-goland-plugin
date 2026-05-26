@@ -107,21 +107,20 @@ class PlantUmlPreviewPanel(private val project: Project) : JPanel(BorderLayout()
     fun refreshFromEditor() {
         val editor = FileEditorManager.getInstance(project).selectedEditor
         val file = editor?.file ?: return
-        val psiFile = PsiManager.getInstance(project).findFile(file) as? GoFile ?: return
         currentFile = file
         val service = project.getService(FlowModelService::class.java)
         flows = service.collectFromFile(file)
         flowSelector.model = DefaultComboBoxModel(flows.map { "${it.name} v${it.version}" }.toTypedArray())
         if (flows.isNotEmpty()) {
             flowSelector.selectedIndex = 0
-            renderSelected(psiFile)
+            renderSelected()
         } else {
             imageLabel.icon = null
             imageLabel.text = "No flows detected"
         }
     }
 
-    private fun renderSelected(psiFile: GoFile? = null) {
+    private fun renderSelected() {
         if (flows.isEmpty()) return
         val idx = flowSelector.selectedIndex.takeIf { it >= 0 } ?: 0
         val model = flows[idx]
