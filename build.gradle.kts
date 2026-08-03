@@ -1,6 +1,6 @@
 plugins {
     id("org.jetbrains.intellij") version "1.17.1"
-    kotlin("jvm") version "2.2.0"
+    kotlin("jvm") version "2.4.0"
 }
 
 // Prevent IntelliJ Gradle plugin from trying to resolve a real IDE during unit tests
@@ -10,7 +10,7 @@ if (isTestTask) {
 }
 
 group = "com.floxy"
-version = "0.2.0"
+version = "0.3.0"
 
 repositories {
     mavenCentral()
@@ -22,17 +22,17 @@ java {
 }
 
 intellij {
-    // GoLand 2026.1
+    // GoLand 2026.2
     type.set("GO")
-    version.set("2026.1.2")
+    version.set("2026.2")
 
     plugins.set(listOf("org.jetbrains.plugins.go"))
 }
 
 tasks {
     patchPluginXml {
-        sinceBuild.set("261.0")
-        untilBuild.set("261.*")
+        sinceBuild.set("262.0")
+        untilBuild.set("262.*")
     }
 
     buildPlugin {
