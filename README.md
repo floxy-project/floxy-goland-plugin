@@ -28,8 +28,8 @@ It helps developers and architects better understand workflow logic, branching, 
 ---
 
 ## Supported IDEs
-- **GoLand** 2025.2 or newer
-- Compatible with **Kotlin Runtime 2.2.0+**
+- **GoLand** 2026.2
+- Compatible with **Kotlin Runtime 2.4.0+**
 
 ---
 
